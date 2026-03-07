@@ -78,7 +78,7 @@ def print_event_detail(db, event_ref: str):
     # Linked content items
     content = db.execute(
         """
-        SELECT ct.url, ct.published_at, s.name as source_name
+        SELECT ct.url, ct.published_at, ct.body, s.name as source_name
         FROM event_content ec
         JOIN content_table ct ON ct.id = ec.content_item_id
         LEFT JOIN sources s ON s.id = ct.source_id
@@ -90,6 +90,8 @@ def print_event_detail(db, event_ref: str):
         print(f"\n  Linked content items ({len(content)}):")
         for c in content:
             print(f"    [{fmt(c['source_name'])}] {c['url']}")
+            if c["body"]:
+                print(f"    Body: {c['body']}")
 
 
 def print_null_coverage(db):
