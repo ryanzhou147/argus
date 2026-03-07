@@ -8,6 +8,11 @@ export default function AgentPanel() {
   const { stopAutoSpin } = useAppContext()
   const [inputValue, setInputValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  
+  const [isRecording, setIsRecording] = useState(false)
+  const [isTranscribing, setIsTranscribing] = useState(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
 
   useEffect(() => {
     if (isPanelOpen) {
@@ -29,6 +34,85 @@ export default function AgentPanel() {
       handleSubmit()
     }
   }, [handleSubmit])
+
+  // Cleanup on unmount or if recording state changes unexpectedly
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop()
+      }
+    }
+  }, [])
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mediaRecorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = mediaRecorder
+      audioChunksRef.current = []
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        audioChunksRef.current = [] // reset
+        
+        setIsTranscribing(true)
+        setIsRecording(false)
+
+        try {
+          const formData = new FormData()
+          formData.append('file', audioBlob, 'audio.webm')
+          formData.append('model_id', 'scribe_v1')
+          
+          const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+            method: 'POST',
+            headers: {
+              'xi-api-key': import.meta.env.VITE_ELEVENLABS_API_KEY || ''
+            },
+            body: formData
+          })
+          
+          if (!response.ok) {
+            throw new Error(`Failed to transcribe: ${response.status} ${response.statusText}`)
+          }
+          
+          const data = await response.json()
+          if (data.text) {
+            setInputValue(prev => prev.length > 0 ? `${prev} ${data.text}` : data.text)
+          }
+        } catch (err) {
+          console.error('Error transcribing audio:', err)
+        } finally {
+          setIsTranscribing(false)
+          stream.getTracks().forEach(track => track.stop())
+        }
+      }
+
+      mediaRecorder.start()
+      setIsRecording(true)
+    } catch (err) {
+      console.error('Error accessing microphone:', err)
+    }
+  }
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop()
+    }
+  }
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      stopRecording()
+    } else {
+      startRecording()
+    }
+  }
 
   const exampleQueries = [
     'Why did the Red Sea shipping disruption happen?',
@@ -125,13 +209,36 @@ export default function AgentPanel() {
               value={inputValue}
               onChange={e => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask about global events..."
-              disabled={isLoading}
+              placeholder={isRecording ? "Listening..." : isTranscribing ? "Transcribing..." : "Ask about global events..."}
+              disabled={isLoading || isRecording || isTranscribing}
               className="flex-1 text-xs px-3 py-2 transition-colors disabled:opacity-50"
               style={{ background: 'var(--bg-raised)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)', outline: 'none' }}
               onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
               onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
             />
+            <button
+              onClick={toggleRecording}
+              disabled={isLoading || isTranscribing}
+              className={`w-9 h-9 flex items-center justify-center transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${isRecording ? 'animate-pulse' : ''}`}
+              style={{
+                 background: isRecording ? '#dc2626' : 'var(--bg-raised)',
+                 border: '1px solid var(--border-strong)',
+                 color: isRecording ? '#fff' : 'var(--text-primary)'
+              }}
+              aria-label={isRecording ? "Stop recording" : "Start voice recording"}
+            >
+              {isTranscribing ? (
+                <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent animate-spin rounded-full" />
+              ) : isRecording ? (
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M6 18h12V6H6v12z" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+              )}
+            </button>
             <button
               onClick={handleSubmit}
               disabled={!inputValue.trim() || isLoading}
