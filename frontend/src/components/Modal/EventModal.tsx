@@ -6,6 +6,14 @@ import { useAgentContext } from '../../context/AgentContext'
 import { getMediaUrls } from '../../utils/mediaConfig'
 import FinancialImpactSection from '../Agent/FinancialImpactSection'
 
+function MissingData({ label }: { label: string }) {
+  return (
+    <p className="text-xs italic" style={{ color: '#8a4040' }}>
+      {label} not available.
+    </p>
+  )
+}
+
 function ConfidenceBar({ score }: { score: number }) {
   const pct = Math.round(score * 100)
   const color = score >= 0.85 ? '#5a8a5a' : score >= 0.70 ? '#8a7a3a' : '#8a3030'
@@ -40,11 +48,12 @@ function RelTypeChip({ type }: { type: string }) {
 }
 
 export default function EventModal() {
-  const { selectedEventId, setSelectedEventId } = useAppContext()
+  const { selectedEventId, setSelectedEventId, events } = useAppContext()
   const { agentResponse, activeNavigationPlan } = useAgentContext()
+  const baseEvent = events.find(e => e.id === selectedEventId) ?? null
   const [detail, setDetail] = useState<EventDetail | null>(null)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [, setError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -74,6 +83,8 @@ export default function EventModal() {
   }, [close])
 
   const isOpen = !!selectedEventId
+  // Use full detail when available, fall back to the lightweight event from the list
+  const ev = detail ?? baseEvent
 
   return (
     <div
@@ -112,38 +123,36 @@ export default function EventModal() {
           </div>
         )}
 
-        {error && (
-          <div className="flex-1 flex items-center justify-center p-6 text-xs" style={{ color: '#8a3030' }}>
-            Failed to load event details.
-          </div>
-        )}
-
-        {detail && !loading && (
+        {!loading && ev && (
           <div className="flex flex-col">
             {/* Hero image */}
             <div className="relative h-44 flex-shrink-0 overflow-hidden" style={{ background: 'var(--bg-raised)' }}>
               <img
-                src={getEventImageUrl(detail.image_url)}
-                alt={detail.title}
+                src={getMediaUrls(ev.image_url, ev.image_s3_url).primary}
+                alt={ev.title}
                 className="w-full h-full object-cover"
                 style={{ filter: 'saturate(0.7) brightness(0.75)' }}
-                onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder-event.svg' }}
+                onError={(e) => {
+                  const fallback = getMediaUrls(ev.image_url, ev.image_s3_url).fallback
+                  const img = e.target as HTMLImageElement
+                  img.src = fallback ?? '/placeholder-event.svg'
+                }}
               />
               <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(8,8,8,0.95) 0%, transparent 55%)' }} />
               {/* Type badge */}
               <span
                 className="absolute bottom-3 left-4 text-xs font-bold px-2 py-0.5 tracking-wider"
                 style={{
-                  backgroundColor: `${EVENT_TYPE_COLORS[detail.event_type]}18`,
-                  color: EVENT_TYPE_COLORS[detail.event_type],
-                  border: `1px solid ${EVENT_TYPE_COLORS[detail.event_type]}66`,
+                  backgroundColor: `${EVENT_TYPE_COLORS[ev.event_type]}18`,
+                  color: EVENT_TYPE_COLORS[ev.event_type],
+                  border: `1px solid ${EVENT_TYPE_COLORS[ev.event_type]}66`,
                 }}
               >
                 <span
                   className="inline-block w-1.5 h-1.5 mr-1.5 align-middle"
-                  style={{ backgroundColor: EVENT_TYPE_COLORS[detail.event_type] }}
+                  style={{ backgroundColor: EVENT_TYPE_COLORS[ev.event_type] }}
                 />
-                {EVENT_TYPE_LABELS[detail.event_type]}
+                {EVENT_TYPE_LABELS[ev.event_type]}
               </span>
             </div>
 
@@ -154,7 +163,7 @@ export default function EventModal() {
                 className="font-bold text-base leading-snug"
                 style={{ color: 'var(--text-bright)' }}
               >
-                {detail.title}
+                {ev.title}
               </h2>
 
               {/* Location + Time */}
@@ -164,21 +173,21 @@ export default function EventModal() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                  {detail.primary_latitude.toFixed(1)}°, {detail.primary_longitude.toFixed(1)}°
+                  {ev.primary_latitude.toFixed(1)}°, {ev.primary_longitude.toFixed(1)}°
                 </span>
                 <span className="flex items-center gap-1">
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                  {new Date(detail.start_time).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}
-                  {detail.end_time && ` — ${new Date(detail.end_time).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}`}
+                  {new Date(ev.start_time).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}
+                  {ev.end_time && ` — ${new Date(ev.end_time).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}`}
                 </span>
               </div>
 
               {/* Confidence score */}
               <div>
                 <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Confidence</div>
-                <ConfidenceBar score={detail.confidence_score} />
+                <ConfidenceBar score={ev.confidence_score} />
               </div>
 
               <div className="h-px" style={{ background: 'var(--border)' }} />
@@ -186,7 +195,9 @@ export default function EventModal() {
               {/* Summary */}
               <div>
                 <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Summary</div>
-                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{detail.summary}</p>
+                {detail?.summary
+                  ? <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{detail.summary}</p>
+                  : <MissingData label="Summary" />}
               </div>
 
               {/* Canada Impact */}
@@ -200,20 +211,22 @@ export default function EventModal() {
                 <div className="flex items-center gap-1.5 mb-1.5">
                   <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#8a4040' }}>CA Impact</span>
                 </div>
-                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{detail.canada_impact_summary}</p>
+                {ev.canada_impact_summary
+                  ? <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{ev.canada_impact_summary}</p>
+                  : <MissingData label="Canada impact summary" />}
               </div>
 
               {/* Financial impact from agent */}
-              {agentResponse?.financial_impact && agentResponse.top_event_id === detail.id && (
+              {agentResponse?.financial_impact && agentResponse.top_event_id === ev.id && (
                 <FinancialImpactSection impact={agentResponse.financial_impact} />
               )}
 
               {/* Entities */}
-              {detail.entities.length > 0 && (
-                <div>
-                  <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Key Entities</div>
+              <div>
+                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Key Entities</div>
+                {(detail?.entities ?? []).length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
-                    {detail.entities.map(name => (
+                    {detail!.entities.map(name => (
                       <span
                         key={name}
                         className="text-xs px-2 py-0.5"
@@ -227,13 +240,13 @@ export default function EventModal() {
                       </span>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : <MissingData label="Key entities" />}
+              </div>
 
               {/* Engagement snapshot */}
-              {detail.engagement && (
-                <div>
-                  <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Engagement</div>
+              <div>
+                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Engagement</div>
+                {detail?.engagement ? (
                   <div className="grid grid-cols-2 gap-1.5">
                     {[
                       { label: 'Reddit Upvotes', value: detail.engagement.reddit_upvotes, icon: '▲' },
@@ -260,15 +273,15 @@ export default function EventModal() {
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : <MissingData label="Engagement data" />}
+              </div>
 
               {/* Sources */}
-              {detail.sources.length > 0 && (
-                <div>
-                  <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Sources</div>
+              <div>
+                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Sources</div>
+                {(detail?.sources ?? []).length > 0 ? (
                   <div className="flex flex-col gap-1.5">
-                    {detail.sources.slice(0, 4).map((src, i) => (
+                    {detail!.sources.slice(0, 4).map((src, i) => (
                       <a
                         key={i}
                         href={src.url}
@@ -297,15 +310,15 @@ export default function EventModal() {
                       </a>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : <MissingData label="Source links" />}
+              </div>
 
               {/* Related events */}
-              {detail.related_events.length > 0 && (
-                <div>
-                  <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Related Events</div>
+              <div>
+                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Related Events</div>
+                {(detail?.related_events ?? []).length > 0 ? (
                   <div className="flex flex-col gap-1.5">
-                    {detail.related_events.slice(0, 5).map(rel => (
+                    {detail!.related_events.slice(0, 5).map(rel => (
                       <div
                         key={rel.event_id}
                         className="p-2.5"
@@ -329,8 +342,8 @@ export default function EventModal() {
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : <MissingData label="Related events" />}
+              </div>
 
               <div className="pb-4" />
             </div>
