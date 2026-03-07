@@ -101,6 +101,21 @@ export default function GlobeView() {
       })
   }, [arcs, visibleIds, highlightedArcKeys])
 
+  // Disable raycasting on arc tube meshes so they never block point clicks
+  useEffect(() => {
+    const globe = globeRef.current
+    if (!globe) return
+    const timer = setTimeout(() => {
+      globe.scene().traverse((obj: THREE.Object3D) => {
+        const mesh = obj as THREE.Mesh
+        if (mesh.isMesh && mesh.geometry?.type === 'TubeGeometry') {
+          mesh.raycast = () => {}
+        }
+      })
+    }, 50)
+    return () => clearTimeout(timer)
+  }, [visibleArcs])
+
   const handlePointClick = useCallback((point: object) => {
     const p = point as GlobePoint
     if (p?.id) {
@@ -177,17 +192,16 @@ export default function GlobeView() {
         arcEndLng="endLng"
         arcColor={(d: object) => {
           const arc = d as ArcData & { highlighted?: boolean }
-          if (arc.highlighted) return ['#ffffff', '#ffffff88']
-          return [arc.color, `${arc.color}44`]
+          if (arc.highlighted) return ['#ffffffaa', '#ffffff44']
+          return [`${arc.color}55`, `${arc.color}22`]
         }}
         arcAltitude={0.25}
         arcStroke={(d: object) => {
           const arc = d as ArcData & { highlighted?: boolean }
-          return arc.highlighted ? 1.2 : 0.4
+          return arc.highlighted ? 0.8 : 0.25
         }}
-        arcDashLength={0.4}
-        arcDashGap={0.2}
-        arcDashAnimateTime={2000}
+        arcDashLength={1}
+        arcDashGap={0}
         // Atmosphere
         atmosphereColor="#555555"
         atmosphereAltitude={0.06}
