@@ -19,7 +19,7 @@ interface GlobePoint {
 
 export default function GlobeView() {
   const globeRef = useRef<any>(null)
-  const { events, timelinePosition, activeFilters, setSelectedEventId, arcs, isAutoSpinning, stopAutoSpin } = useAppContext()
+  const { events, timelinePosition, activeFilters, selectedEventId, setSelectedEventId, arcs, isAutoSpinning, stopAutoSpin } = useAppContext()
   const { activeHighlights } = useAgentContext()
 
   // Monochrome globe material — medium dark grey base
@@ -76,7 +76,7 @@ export default function GlobeView() {
         lat: evt.primary_latitude,
         lng: evt.primary_longitude,
         color: baseColor,
-        size: 0.2,
+        size: 0.35,
         label: `<div style="background:#111111;color:#b8b8b8;padding:6px 10px;font-size:11px;max-width:200px;border:1px solid #2a2a2a;font-family:Space Mono,Courier New,monospace"><strong style="color:#d0d0d0;font-size:11px">${evt.title}</strong><br/><span style="color:${baseColor};font-size:10px">${evt.event_type.replace(/_/g, ' ')}</span></div>`,
         event: evt,
         isPulsing: false,
@@ -94,12 +94,14 @@ export default function GlobeView() {
       .filter(a => visibleIds.has(a.eventAId) && visibleIds.has(a.eventBId))
       .map(a => {
         const key = [a.eventAId, a.eventBId].sort().join('|')
-        if (highlightedArcKeys.has(key)) {
+        const isConnectedToSelected = selectedEventId !== null &&
+          (a.eventAId === selectedEventId || a.eventBId === selectedEventId)
+        if (highlightedArcKeys.has(key) || isConnectedToSelected) {
           return { ...a, color: '#ffffff', highlighted: true }
         }
         return a
       })
-  }, [arcs, visibleIds, highlightedArcKeys])
+  }, [arcs, visibleIds, highlightedArcKeys, selectedEventId])
 
   // Disable raycasting on arc tube meshes so they never block point clicks
   useEffect(() => {
@@ -121,6 +123,7 @@ export default function GlobeView() {
     if (p?.id) {
       stopAutoSpin()
       setSelectedEventId(p.id)
+      globeRef.current?.pointOfView({ lat: p.lat - 3, lng: p.lng, altitude: 0.5 }, 800)
     }
   }, [setSelectedEventId, stopAutoSpin])
 
@@ -177,7 +180,7 @@ export default function GlobeView() {
         pointRadius={(d: object) => {
           const p = d as GlobePoint
           if (!visibleIds.has(p.id)) return 0
-          return Math.max(p.size * (altRef.current / 2.5), 0.1)
+          return Math.max(p.size * (altRef.current / 2.5), 0.15)
         }}
         pointResolution={6}
         pointAltitude={0.015}
