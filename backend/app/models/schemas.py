@@ -63,6 +63,10 @@ class Engagement(BaseModel):
     reddit_comments: int
     poly_volume: int
     poly_comments: int
+    twitter_likes: int
+    twitter_views: int
+    twitter_comments: int
+    twitter_reposts: int
 
 
 # ------------------------------------------------------------------
@@ -74,6 +78,10 @@ class EngagementSnapshot(BaseModel):
     reddit_comments: int
     poly_volume: int
     poly_comments: int
+    twitter_likes: int
+    twitter_views: int
+    twitter_comments: int
+    twitter_reposts: int
 
 
 class SourceCard(BaseModel):

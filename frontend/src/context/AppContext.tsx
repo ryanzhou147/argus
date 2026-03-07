@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from 'react'
 import type { Event, EventType, RelatedEvent, TimelineResponse } from '../types/events'
 
 export const EVENT_TYPE_COLORS: Record<EventType, string> = {
@@ -51,6 +51,11 @@ interface AppContextValue {
   // Arcs (derived from related events of all visible events)
   arcs: ArcData[]
   setArcs: (arcs: ArcData[]) => void
+
+  // Auto-spin
+  isAutoSpinning: boolean
+  stopAutoSpin: () => void
+  resetInactivityTimer: () => void
 }
 
 export interface ArcData {
@@ -66,6 +71,8 @@ export interface ArcData {
 
 const AppContext = createContext<AppContextValue | null>(null)
 
+const AUTO_SPIN_RESUME_MS = 5 * 60 * 1000 // 5 minutes
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [events, setEvents] = useState<Event[]>([])
   const [timeline, setTimeline] = useState<TimelineResponse | null>(null)
@@ -73,8 +80,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [activeFilters, setActiveFilters] = useState<Set<EventType>>(new Set(ALL_TYPES))
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
   const [arcs, setArcs] = useState<ArcData[]>([])
+  const [isAutoSpinning, setIsAutoSpinning] = useState(true)
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const stopAutoSpin = useCallback(() => {
+    setIsAutoSpinning(false)
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current)
+    }
+    inactivityTimerRef.current = setTimeout(() => {
+      setIsAutoSpinning(true)
+    }, AUTO_SPIN_RESUME_MS)
+  }, [])
+
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current)
+    }
+    inactivityTimerRef.current = setTimeout(() => {
+      setIsAutoSpinning(true)
+    }, AUTO_SPIN_RESUME_MS)
+  }, [])
 
   const toggleFilter = useCallback((type: EventType) => {
+    stopAutoSpin()
     setActiveFilters(prev => {
       const next = new Set(prev)
       if (next.has(type)) {
@@ -84,11 +113,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       return next
     })
-  }, [])
+  }, [stopAutoSpin])
 
   const setAllFilters = useCallback((active: boolean) => {
+    stopAutoSpin()
     setActiveFilters(active ? new Set(ALL_TYPES) : new Set())
-  }, [])
+  }, [stopAutoSpin])
+
+  const setTimelinePositionWithStop = useCallback((d: Date) => {
+    stopAutoSpin()
+    setTimelinePosition(d)
+  }, [stopAutoSpin])
 
   return (
     <AppContext.Provider
@@ -98,7 +133,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         timeline,
         setTimeline,
         timelinePosition,
-        setTimelinePosition,
+        setTimelinePosition: setTimelinePositionWithStop,
         activeFilters,
         toggleFilter,
         setAllFilters,
@@ -106,6 +141,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSelectedEventId,
         arcs,
         setArcs,
+        isAutoSpinning,
+        stopAutoSpin,
+        resetInactivityTimer,
       }}
     >
       {children}
