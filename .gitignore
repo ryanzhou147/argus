@@ -52,3 +52,5 @@ natural-disasters/.env
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+*.json
