@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { getTimeline, getRelatedEvents } from './api/client'
-import { useAppContext, buildArcs } from './context/AppContext'
-import type { RelatedEvent } from './types/events'
+import { getContentPoints } from './api/client'
+import { useAppContext } from './context/AppContext'
+import type { Event, EventType, TimelineResponse } from './types/events'
 import GlobeView from './components/Globe/GlobeView'
 import FilterBar from './components/Filters/FilterBar'
 import TimelineSlider from './components/Timeline/TimelineSlider'
@@ -39,30 +39,48 @@ export default function App() {
 
     async function load() {
       try {
-        const timelineData = await getTimeline()
+        const data = await getContentPoints()
         if (cancelled) return
 
-        setTimeline(timelineData)
-        setEvents(timelineData.events)
+        const KNOWN_TYPES: EventType[] = [
+          'geopolitics', 'trade_supply_chain', 'energy_commodities',
+          'financial_markets', 'climate_disasters', 'policy_regulation',
+        ]
 
-        // Fetch related events for all events to build arcs
-        const relatedMap = new Map<string, RelatedEvent[]>()
-        await Promise.allSettled(
-          timelineData.events.map(async evt => {
-            try {
-              const r = await getRelatedEvents(evt.id)
-              relatedMap.set(evt.id, r.related_events)
-            } catch {
-              // Non-critical: arcs just won't show for this event
-            }
-          })
-        )
+        const mappedEvents: Event[] = data.points.map(p => ({
+          id: p.id,
+          title: p.title ?? 'Unknown',
+          event_type: (KNOWN_TYPES.includes(p.event_type as EventType)
+            ? p.event_type
+            : 'geopolitics') as EventType,
+          primary_latitude: p.latitude,
+          primary_longitude: p.longitude,
+          start_time: p.published_at ?? new Date().toISOString(),
+          end_time: null,
+          confidence_score: 0.5,
+          canada_impact_summary: '',
+          image_url: null,
+        }))
 
-        if (cancelled) return
+        const times = mappedEvents
+          .map(e => new Date(e.start_time).getTime())
+          .filter(t => !isNaN(t))
+        const minTime = times.length
+          ? new Date(Math.min(...times)).toISOString()
+          : new Date().toISOString()
+        const maxTime = times.length
+          ? new Date(Math.max(...times)).toISOString()
+          : new Date().toISOString()
 
-        const visibleIds = new Set(timelineData.events.map(e => e.id))
-        const arcs = buildArcs(timelineData.events, relatedMap, visibleIds)
-        setArcs(arcs)
+        const syntheticTimeline: TimelineResponse = {
+          events: mappedEvents,
+          min_time: minTime,
+          max_time: maxTime,
+        }
+
+        setTimeline(syntheticTimeline)
+        setEvents(mappedEvents)
+        setArcs([])
         setLoading(false)
       } catch (e) {
         if (!cancelled) {

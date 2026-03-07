@@ -83,3 +83,16 @@ export interface TimelineResponse {
 export interface RelatedEventsResponse {
   related_events: RelatedEvent[]
 }
+
+export interface ContentPoint {
+  id: string
+  title: string | null
+  latitude: number
+  longitude: number
+  event_type: string | null
+  published_at: string | null
+}
+
+export interface ContentPointsResponse {
+  points: ContentPoint[]
+}
