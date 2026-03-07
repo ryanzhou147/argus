@@ -41,6 +41,7 @@ MANIFEST
 
 # Frontend / Node
 node_modules/
+**/node_modules/
 .npm
 .nvm
 dist/
