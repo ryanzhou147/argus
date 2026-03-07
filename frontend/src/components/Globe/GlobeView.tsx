@@ -1,5 +1,6 @@
 import { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import Globe from 'react-globe.gl'
+import * as THREE from 'three'
 import type { Event } from '../../types/events'
 import { useAppContext, EVENT_TYPE_COLORS, type ArcData } from '../../context/AppContext'
 import { useAgentContext } from '../../context/AgentContext'
@@ -20,6 +21,20 @@ export default function GlobeView() {
   const globeRef = useRef<any>(null)
   const { events, timelinePosition, activeFilters, setSelectedEventId, arcs, isAutoSpinning, stopAutoSpin } = useAppContext()
   const { activeHighlights } = useAgentContext()
+
+  // Futuristic globe material — dark navy, no texture
+  const globeMaterial = useMemo(() => new THREE.MeshPhongMaterial({
+    color: '#0a1628',
+    emissive: '#0a1628',
+    specular: '#1e4080',
+    shininess: 8,
+  }), [])
+
+  // Country hex-dot layer
+  const [countriesData, setCountriesData] = useState<{ features: object[] }>({ features: [] })
+  useEffect(() => {
+    fetch('/countries.geojson').then(r => r.json()).then(setCountriesData)
+  }, [])
 
   // Track camera altitude via ref so the points array never recalculates on zoom.
   // A rAF-throttled tick triggers re-renders so the pointRadius accessor picks up
@@ -120,11 +135,18 @@ export default function GlobeView() {
   }, [stopAutoSpin])
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full bg-black">
       <Globe
         ref={globeRef}
-        globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
-        backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
+        globeMaterial={globeMaterial}
+        showGraticules={false}
+        backgroundImageUrl=""
+        // Country hex dots — land layer
+        hexPolygonsData={countriesData.features}
+        hexPolygonResolution={4}
+        hexPolygonMargin={0.4}
+        hexPolygonAltitude={0.001}
+        hexPolygonColor={() => 'rgba(80, 140, 220, 0.45)'}
         // Points
         pointsData={allPoints}
         pointLat="lat"
@@ -163,8 +185,8 @@ export default function GlobeView() {
         arcDashGap={0.2}
         arcDashAnimateTime={2000}
         // Atmosphere
-        atmosphereColor="#1e40af"
-        atmosphereAltitude={0.15}
+        atmosphereColor="#00bfff"
+        atmosphereAltitude={0.2}
         width={window.innerWidth}
         height={window.innerHeight}
       />
