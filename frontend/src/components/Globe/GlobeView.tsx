@@ -205,7 +205,9 @@ export default function GlobeView() {
         pointLng="lng"
         pointColor={(d: object) => {
           const p = d as GlobePoint
-          return visibleIds.has(p.id) ? p.color : 'rgba(0,0,0,0)'
+          if (!visibleIds.has(p.id)) return 'rgba(0,0,0,0)'
+          if (p.id === selectedEventId) return '#ffffff'
+          return p.color
         }}
         pointRadius={(d: object) => {
           const p = d as GlobePoint
