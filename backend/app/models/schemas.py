@@ -137,3 +137,27 @@ class TimelineResponse(BaseModel):
 
 class RelatedEventsResponse(BaseModel):
     related_events: List[RelatedEvent]
+
+
+# ------------------------------------------------------------------
+# Market signals (from Polymarket / Kalshi scrapers)
+# ------------------------------------------------------------------
+
+class MarketSignalEngagement(BaseModel):
+    poly_volume: float
+    poly_comments: Optional[int] = None
+
+
+class MarketSignal(BaseModel):
+    title: str
+    body: str
+    url: str
+    published_at: Optional[datetime] = None
+    engagement: MarketSignalEngagement
+    source: str  # "polymarket" | "kalshi"
+    error: Optional[bool] = None  # True if this source failed to fetch
+
+
+class MarketSignalsResponse(BaseModel):
+    signals: List[MarketSignal]
+    total: int
