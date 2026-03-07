@@ -1,9 +1,13 @@
 """
 Polymarket scraper: fetch events by tag and normalize to a common row format.
+
+Output rows are schema-aligned with 001_init_schema.sql (engagement + content_table).
 """
 import json
 import requests
 from datetime import datetime
+
+from .row_format import make_content_row
 
 BASE_URL = "https://gamma-api.polymarket.com"
 
@@ -128,11 +132,48 @@ def _format_body(event: dict) -> str:
     return description or "No data"
 
 
-def _event_to_engagement(event: dict) -> dict:
-    return {
-        "poly_volume": float(event.get("volume24hr") or 0),
-        "poly_comments": int(event.get("commentCount") or 0),
-    }
+# Allowed event_type values (content_table.event_type)
+VALID_EVENT_TYPES = frozenset({
+    "geopolitics", "trade_supply_chain", "energy_commodities",
+    "financial_markets", "climate_disasters", "policy_regulation",
+})
+
+# Map Polymarket category/tag to schema event_type (one of VALID_EVENT_TYPES)
+CATEGORY_TO_EVENT_TYPE: dict[str, str] = {
+    "politics": "geopolitics",
+    "geopolitics": "geopolitics",
+    "foreign-policy": "geopolitics",
+    "macro-geopolitics": "geopolitics",
+    "economy": "financial_markets",
+    "economic-policy": "policy_regulation",
+    "finance": "financial_markets",
+    "fed": "financial_markets",
+    "fed-rates": "financial_markets",
+    "commodities": "energy_commodities",
+    "oil": "energy_commodities",
+    "stocks": "financial_markets",
+    "ukraine": "geopolitics",
+    "elections": "geopolitics",
+    "climate-science": "climate_disasters",
+    "science": "policy_regulation",
+    "tech": "policy_regulation",
+    "world": "geopolitics",
+    "china": "geopolitics",
+    "business": "financial_markets",
+}
+
+
+def _event_type_from_event(event: dict) -> str | None:
+    cat = (event.get("category") or "").strip().lower()
+    if cat and cat in CATEGORY_TO_EVENT_TYPE:
+        v = CATEGORY_TO_EVENT_TYPE[cat]
+        return v if v in VALID_EVENT_TYPES else None
+    for t in event.get("tags", []):
+        slug = (t.get("slug") or "").strip().lower()
+        if slug and slug in CATEGORY_TO_EVENT_TYPE:
+            v = CATEGORY_TO_EVENT_TYPE[slug]
+            return v if v in VALID_EVENT_TYPES else None
+    return None
 
 
 def event_to_row(event: dict) -> dict:
@@ -145,13 +186,23 @@ def event_to_row(event: dict) -> dict:
             published_at = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
         except ValueError:
             pass
-    return {
-        "title": event.get("title", "").strip(),
-        "body": _format_body(event),
-        "url": url,
-        "published_at": published_at,
-        "engagement": _event_to_engagement(event),
-    }
+    return make_content_row(
+        source="polymarket",
+        title=(event.get("title") or "").strip(),
+        body=_format_body(event),
+        url=url,
+        published_at=published_at,
+        image_url=None,
+        latitude=None,
+        longitude=None,
+        event_type=_event_type_from_event(event),
+        sentiment_score=None,
+        market_signal=None,
+        engagement={
+            "poly_volume": float(event.get("volume24hr") or 0),
+            "poly_comments": int(event.get("commentCount") or 0),
+        },
+    )
 
 
 def fetch_all_rows(max_per_tag: int = 50) -> list[dict]:

@@ -4,6 +4,8 @@ Kalshi scraper: fetch open events/markets and normalize to a common row format.
 Optimized to filter server-side: fetch markets per event (event_ticker param)
 instead of all markets, and use asyncio with a 10 req/sec rate limit to batch
 ~10 events at a time.
+
+Output rows are schema-aligned with 001_init_schema.sql (engagement + content_table).
 """
 import asyncio
 import time
@@ -13,6 +15,8 @@ from typing import Any
 
 import httpx
 import requests
+
+from .row_format import make_content_row
 
 BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
 RATE_LIMIT_PER_SEC = 10
@@ -28,6 +32,26 @@ TARGET_CATEGORIES = {
     "Health",
     "Climate and Weather",
     "Transportation",
+}
+
+# Allowed event_type values (content_table.event_type)
+VALID_EVENT_TYPES = frozenset({
+    "geopolitics", "trade_supply_chain", "energy_commodities",
+    "financial_markets", "climate_disasters", "policy_regulation",
+})
+
+# Map Kalshi category to schema event_type (one of VALID_EVENT_TYPES)
+CATEGORY_TO_EVENT_TYPE: dict[str, str] = {
+    "Politics": "geopolitics",
+    "Economics": "financial_markets",
+    "World": "geopolitics",
+    "Elections": "geopolitics",
+    "Companies": "financial_markets",
+    "Financials": "financial_markets",
+    "Science and Technology": "policy_regulation",
+    "Health": "policy_regulation",
+    "Climate and Weather": "climate_disasters",
+    "Transportation": "trade_supply_chain",
 }
 
 
@@ -178,16 +202,26 @@ def event_to_row(event: dict, markets: list[dict]) -> dict:
     if sub_title and sub_title not in title:
         title = f"{title} ({sub_title})"
     total_volume_24h = sum(float(m.get("volume_24h") or 0) for m in markets)
-    return {
-        "title": title,
-        "body": _format_body(markets),
-        "url": url,
-        "published_at": published_at,
-        "engagement": {
+    category = event.get("category") or ""
+    raw_event_type = CATEGORY_TO_EVENT_TYPE.get(category)
+    event_type = raw_event_type if raw_event_type in VALID_EVENT_TYPES else None
+    return make_content_row(
+        source="kalshi",
+        title=title,
+        body=_format_body(markets),
+        url=url,
+        published_at=published_at,
+        image_url=None,
+        latitude=None,
+        longitude=None,
+        event_type=event_type,
+        sentiment_score=None,
+        market_signal=None,
+        engagement={
             "poly_volume": total_volume_24h,
-            "poly_comments": None,
+            "poly_comments": 0,
         },
-    }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -218,5 +252,5 @@ def fetch_all_rows(max_events: int | None = None) -> list[dict]:
             continue
         rows.append(event_to_row(event, markets))
 
-    rows.sort(key=lambda r: r["engagement"]["poly_volume"], reverse=True)
+    rows.sort(key=lambda r: (r["engagement"].get("poly_volume") or 0), reverse=True)
     return rows
