@@ -66,9 +66,8 @@ export default function App() {
         const times = mappedEvents
           .map(e => new Date(e.start_time).getTime())
           .filter(t => !isNaN(t))
-        const minTime = times.length
-          ? new Date(Math.min(...times)).toISOString()
-          : new Date().toISOString()
+        const twoWeeksAgo = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000)
+        const minTime = twoWeeksAgo.toISOString()
         const maxTime = times.length
           ? new Date(Math.max(...times)).toISOString()
           : new Date().toISOString()

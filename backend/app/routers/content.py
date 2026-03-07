@@ -23,7 +23,7 @@ def _get_connection():
 
 @router.get("/points")
 def get_content_points():
-    """Return all content_table rows that have latitude and longitude set."""
+    """Return content_table rows with location data from the last 31 days."""
     conn = _get_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -39,7 +39,8 @@ def get_content_points():
                 FROM content_table
                 WHERE latitude IS NOT NULL
                   AND longitude IS NOT NULL
-                ORDER BY published_at DESC NULLS LAST
+                  AND published_at >= NOW() - INTERVAL '31 days'
+                ORDER BY published_at DESC
                 """
             )
             rows = cur.fetchall()
