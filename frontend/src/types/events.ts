@@ -5,6 +5,7 @@ export type EventType =
   | 'financial_markets'
   | 'climate_disasters'
   | 'policy_regulation'
+  | 'humanitarian_crisis'
 
 export type RelationshipType =
   | 'market_reaction'
@@ -83,4 +84,32 @@ export interface TimelineResponse {
 
 export interface RelatedEventsResponse {
   related_events: RelatedEvent[]
+}
+
+export interface ContentPoint {
+  id: string
+  title: string | null
+  latitude: number
+  longitude: number
+  event_type: string | null
+  published_at: string | null
+}
+
+export interface ContentPointsResponse {
+  points: ContentPoint[]
+}
+
+export interface ContentArc {
+  event_a_id: string
+  event_b_id: string
+  similarity: number
+  start_lat: number
+  start_lng: number
+  end_lat: number
+  end_lng: number
+  event_type_a: string | null
+}
+
+export interface ContentArcsResponse {
+  arcs: ContentArc[]
 }
