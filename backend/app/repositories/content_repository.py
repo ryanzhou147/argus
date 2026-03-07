@@ -128,7 +128,8 @@ def persist_market_signal_rows(rows: list[dict[str, Any]]) -> tuple[int, int]:
                     """
                     UPDATE content_table SET
                         title = %s, body = %s, published_at = %s,
-                        image_url = %s, engagement_id = %s, event_type = %s
+                        image_url = %s, engagement_id = %s, event_type = %s,
+                        latitude = %s, longitude = %s
                     WHERE url = %s
                     """,
                     (
@@ -138,6 +139,8 @@ def persist_market_signal_rows(rows: list[dict[str, Any]]) -> tuple[int, int]:
                         row.get("image_url"),
                         engagement_id,
                         row.get("event_type"),
+                        row.get("latitude"),
+                        row.get("longitude"),
                         row["url"],
                     ),
                 )
@@ -169,12 +172,13 @@ def persist_market_signal_rows(rows: list[dict[str, Any]]) -> tuple[int, int]:
                     """
                     INSERT INTO content_table (
                         title, body, url, published_at, image_url,
-                        engagement_id, event_type
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        engagement_id, event_type, latitude, longitude
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (url) DO UPDATE SET
                         title = EXCLUDED.title, body = EXCLUDED.body,
                         published_at = EXCLUDED.published_at, image_url = EXCLUDED.image_url,
-                        engagement_id = EXCLUDED.engagement_id, event_type = EXCLUDED.event_type
+                        engagement_id = EXCLUDED.engagement_id, event_type = EXCLUDED.event_type,
+                        latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude
                     """,
                     (
                         row.get("title") or "",
@@ -184,6 +188,8 @@ def persist_market_signal_rows(rows: list[dict[str, Any]]) -> tuple[int, int]:
                         row.get("image_url"),
                         engagement_id,
                         row.get("event_type"),
+                        row.get("latitude"),
+                        row.get("longitude"),
                     ),
                 )
                 num_content += 1

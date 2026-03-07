@@ -1,5 +1,5 @@
 """
-Scraping service: runs Polymarket and Kalshi scrapers (backend/app/scrapers)
+Scraping service: runs Polymarket, Kalshi, and GDELT scrapers (backend/app/scrapers)
 and returns normalized market-signal rows for the FastAPI market-signals endpoint.
 
 Rows are schema-aligned with 001_init_schema.sql (engagement + content_table).
@@ -11,59 +11,97 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from ..scrapers import kalshi, polymarket
+from ..scrapers import gdelt, kalshi, polymarket
+
+# All known source names
+ALL_SOURCES = frozenset({"polymarket", "kalshi", "gdelt"})
 
 
-def fetch_all_market_signals(*, verbose: bool = False) -> list[dict[str, Any]]:
+def fetch_all_market_signals(
+    *,
+    sources: set[str] | None = None,
+    verbose: bool = False,
+) -> list[dict[str, Any]]:
     """
-    Run Polymarket and Kalshi scrapers and return a combined list of
-    normalized market signals. Each item has: title, body, url, published_at,
-    engagement (full schema: poly_volume, poly_comments, reddit_*, twitter_*),
-    source ("polymarket" | "kalshi"), and optional image_url, event_type, etc.
+    Run scrapers and return a combined list of normalized market signals.
+
+    Args:
+        sources: which scrapers to run. Defaults to all.
+                 e.g. {"gdelt"} to run only GDELT.
+        verbose: print progress to stdout.
     """
+    active = ALL_SOURCES if sources is None else (sources & ALL_SOURCES)
     combined: list[dict[str, Any]] = []
-    try:
-        if verbose:
-            print("  [Polymarket] fetching...")
-        rows = polymarket.fetch_all_rows(max_per_tag=50)
-        for r in rows:
-            r["source"] = "polymarket"
-            combined.append(r)
-        if verbose:
-            print(f"  [Polymarket] got {len(rows)} rows")
-    except Exception as e:
-        if verbose:
-            print(f"  [Polymarket] failed: {e}")
-        combined.append({
-            "title": "[Polymarket fetch failed]",
-            "body": str(e),
-            "url": "",
-            "published_at": None,
-            "engagement": {"poly_volume": 0.0, "poly_comments": None},
-            "source": "polymarket",
-            "error": True,
-        })
-    try:
-        if verbose:
-            print("  [Kalshi] fetching...")
-        rows = kalshi.fetch_all_rows()
-        for r in rows:
-            r["source"] = "kalshi"
-            combined.append(r)
-        if verbose:
-            print(f"  [Kalshi] got {len(rows)} rows")
-    except Exception as e:
-        if verbose:
-            print(f"  [Kalshi] failed: {e}")
-        combined.append({
-            "title": "[Kalshi fetch failed]",
-            "body": str(e),
-            "url": "",
-            "published_at": None,
-            "engagement": {"poly_volume": 0.0, "poly_comments": None},
-            "source": "kalshi",
-            "error": True,
-        })
+
+    if "polymarket" in active:
+        try:
+            if verbose:
+                print("  [Polymarket] fetching...")
+            rows = polymarket.fetch_all_rows(max_per_tag=50)
+            for r in rows:
+                r["source"] = "polymarket"
+                combined.append(r)
+            if verbose:
+                print(f"  [Polymarket] got {len(rows)} rows")
+        except Exception as e:
+            if verbose:
+                print(f"  [Polymarket] failed: {e}")
+            combined.append({
+                "title": "[Polymarket fetch failed]",
+                "body": str(e),
+                "url": "",
+                "published_at": None,
+                "engagement": {"poly_volume": 0.0, "poly_comments": None},
+                "source": "polymarket",
+                "error": True,
+            })
+
+    if "kalshi" in active:
+        try:
+            if verbose:
+                print("  [Kalshi] fetching...")
+            rows = kalshi.fetch_all_rows()
+            for r in rows:
+                r["source"] = "kalshi"
+                combined.append(r)
+            if verbose:
+                print(f"  [Kalshi] got {len(rows)} rows")
+        except Exception as e:
+            if verbose:
+                print(f"  [Kalshi] failed: {e}")
+            combined.append({
+                "title": "[Kalshi fetch failed]",
+                "body": str(e),
+                "url": "",
+                "published_at": None,
+                "engagement": {"poly_volume": 0.0, "poly_comments": None},
+                "source": "kalshi",
+                "error": True,
+            })
+
+    if "gdelt" in active:
+        try:
+            if verbose:
+                print("  [GDELT] fetching...")
+            rows = gdelt.fetch_all_rows()
+            for r in rows:
+                r["source"] = "gdelt"
+                combined.append(r)
+            if verbose:
+                print(f"  [GDELT] got {len(rows)} rows")
+        except Exception as e:
+            if verbose:
+                print(f"  [GDELT] failed: {e}")
+            combined.append({
+                "title": "[GDELT fetch failed]",
+                "body": str(e),
+                "url": "",
+                "published_at": None,
+                "engagement": {"poly_volume": 0.0, "poly_comments": None},
+                "source": "gdelt",
+                "error": True,
+            })
+
     return combined
 
 
@@ -91,11 +129,15 @@ def persist_market_signals_to_db(rows: list[dict[str, Any]], *, verbose: bool = 
         return None
 
 
-def fetch_and_persist_market_signals(*, verbose: bool = False) -> tuple[list[dict[str, Any]], tuple[int, int] | None]:
+def fetch_and_persist_market_signals(
+    *,
+    sources: set[str] | None = None,
+    verbose: bool = False,
+) -> tuple[list[dict[str, Any]], tuple[int, int] | None]:
     """
-    Fetch from Polymarket and Kalshi, then persist to DB if DATABASE_URL is set.
+    Fetch from scrapers, then persist to DB if DATABASE_URL is set.
     Returns (rows, persist_result) where persist_result is (eng_count, content_count) or None.
     """
-    rows = fetch_all_market_signals(verbose=verbose)
+    rows = fetch_all_market_signals(sources=sources, verbose=verbose)
     result = persist_market_signals_to_db(rows, verbose=verbose)
     return rows, result
