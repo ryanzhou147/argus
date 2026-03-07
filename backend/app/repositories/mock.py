@@ -80,6 +80,7 @@ class MockEventRepository(EventRepository):
             "confidence_score": e["confidence_score"],
             "canada_impact_summary": e["canada_impact_summary"],
             "image_url": e.get("image_public_id"),
+            "image_s3_url": None,
         }
 
     # ------------------------------------------------------------------

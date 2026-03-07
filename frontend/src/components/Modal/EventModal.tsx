@@ -3,7 +3,7 @@ import { getEventById } from '../../api/client'
 import type { EventDetail } from '../../types/events'
 import { useAppContext, EVENT_TYPE_COLORS, EVENT_TYPE_LABELS } from '../../context/AppContext'
 import { useAgentContext } from '../../context/AgentContext'
-import { getEventImageUrl } from '../../utils/mediaConfig'
+import { getMediaUrls } from '../../utils/mediaConfig'
 import FinancialImpactSection from '../Agent/FinancialImpactSection'
 
 function ConfidenceBar({ score }: { score: number }) {
