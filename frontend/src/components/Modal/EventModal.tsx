@@ -80,14 +80,6 @@ export default function EventModal() {
       className="absolute top-0 right-0 h-full z-30 flex pointer-events-none"
       style={{ width: '420px', maxWidth: '100vw' }}
     >
-      {isOpen && (
-        <div
-          className="fixed inset-0 pointer-events-auto"
-          style={{ zIndex: -1 }}
-          onClick={close}
-        />
-      )}
-
       <div
         ref={scrollRef}
         className="h-full ml-auto w-full pointer-events-auto overflow-y-auto flex flex-col"
