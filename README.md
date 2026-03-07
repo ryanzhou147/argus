@@ -1,4 +1,4 @@
-# Global Event Intelligence Globe — Canada Impact
+# Argus
 
 A hackathon MVP: a 3D globe dashboard that visualizes global events and explains why they matter to Canada.
 

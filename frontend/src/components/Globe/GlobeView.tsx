@@ -1,5 +1,6 @@
-import { useRef, useEffect, useMemo, useCallback } from 'react'
+import { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import Globe from 'react-globe.gl'
+import * as THREE from 'three'
 import type { Event } from '../../types/events'
 import { useAppContext, EVENT_TYPE_COLORS, type ArcData } from '../../context/AppContext'
 import { useAgentContext } from '../../context/AgentContext'
@@ -19,40 +20,69 @@ interface GlobePoint {
 export default function GlobeView() {
   const globeRef = useRef<any>(null)
   const { events, timelinePosition, activeFilters, setSelectedEventId, arcs, isAutoSpinning, stopAutoSpin } = useAppContext()
-  const { activePulseIds, activeHighlights } = useAgentContext()
+  const { activeHighlights } = useAgentContext()
 
-  // Compute visible events based on timeline + filters
-  const visibleEvents = useMemo<Event[]>(() => {
-    return events.filter(evt => {
-      if (!activeFilters.has(evt.event_type)) return false
-      if (timelinePosition && new Date(evt.start_time) > timelinePosition) return false
-      return true
-    })
+  // Monochrome globe material — medium dark grey base
+  const globeMaterial = useMemo(() => new THREE.MeshPhongMaterial({
+    color: '#141414',
+    emissive: '#0a0a0a',
+    specular: '#2a2a2a',
+    shininess: 4,
+  }), [])
+
+  // Country hex-dot layer
+  const [countriesData, setCountriesData] = useState<{ features: object[] }>({ features: [] })
+  useEffect(() => {
+    fetch('/countries.geojson').then(r => r.json()).then(setCountriesData)
+  }, [])
+
+// Track camera altitude via ref so the points array never recalculates on zoom.
+  // A rAF-throttled tick triggers re-renders so the pointRadius accessor picks up
+  // the new altitude without rebuilding or rememoising the points array.
+  const altRef = useRef(2.5)
+  const rafRef = useRef<number | null>(null)
+  const [, setAltitudeTick] = useState(0)
+
+  const handleZoom = useCallback(({ altitude }: { altitude: number }) => {
+    // onZoom fires during rotation/inertia too — skip if altitude didn't actually change
+    if (Math.abs(altitude - altRef.current) < 0.01) return
+    altRef.current = altitude
+    if (rafRef.current === null) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null
+        setAltitudeTick(t => t + 1)
+      })
+    }
+  }, [])
+
+  // Compute visible event IDs based on timeline + filters
+  const visibleIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const evt of events) {
+      if (!activeFilters.has(evt.event_type)) continue
+      if (timelinePosition && new Date(evt.start_time) > timelinePosition) continue
+      ids.add(evt.id)
+    }
+    return ids
   }, [events, timelinePosition, activeFilters])
 
-  // Build point data for react-globe.gl
-  const pulseSet = useMemo(() => new Set(activePulseIds), [activePulseIds])
-
-  const points = useMemo<GlobePoint[]>(() => {
-    return visibleEvents.map(evt => {
-      const isPulsing = pulseSet.has(evt.id)
-      const baseColor = EVENT_TYPE_COLORS[evt.event_type]
-      const color = isPulsing ? '#ffffff' : baseColor
+  // All points — never filtered out, so pointsData is stable and react-globe.gl
+  // never re-animates on filter change. Visibility is controlled via pointRadius/pointColor.
+  const allPoints = useMemo<GlobePoint[]>(() => {
+    return events.map(evt => {
+      const baseColor = EVENT_TYPE_COLORS[evt.event_type] ?? '#888888'
       return {
         id: evt.id,
         lat: evt.primary_latitude,
         lng: evt.primary_longitude,
-        color,
-        size: isPulsing ? (0.5 + evt.confidence_score * 0.4) * 1.8 : 0.5 + evt.confidence_score * 0.4,
-        label: `<div style="background:rgba(15,23,42,0.9);color:white;padding:8px 12px;border-radius:6px;font-size:12px;max-width:200px;border:1px solid ${baseColor}"><strong>${evt.title}</strong><br/><span style="color:${baseColor};font-size:11px">${evt.event_type.replace(/_/g, ' ')}</span></div>`,
+        color: baseColor,
+        size: 0.2,
+        label: `<div style="background:#111111;color:#b8b8b8;padding:6px 10px;font-size:11px;max-width:200px;border:1px solid #2a2a2a;font-family:Space Mono,Courier New,monospace"><strong style="color:#d0d0d0;font-size:11px">${evt.title}</strong><br/><span style="color:${baseColor};font-size:10px">${evt.event_type.replace(/_/g, ' ')}</span></div>`,
         event: evt,
-        isPulsing,
+        isPulsing: false,
       }
     })
-  }, [visibleEvents, pulseSet])
-
-  // Build visible arc IDs
-  const visibleIds = useMemo(() => new Set(visibleEvents.map(e => e.id)), [visibleEvents])
+  }, [events])
 
   // Build highlighted arc pairs from agent context
   const highlightedArcKeys = useMemo(() => {
@@ -79,6 +109,13 @@ export default function GlobeView() {
     }
   }, [setSelectedEventId, stopAutoSpin])
 
+  // Cancel any pending rAF on unmount
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+    }
+  }, [])
+
   // Auto-rotate globe based on isAutoSpinning state
   useEffect(() => {
     const globe = globeRef.current
@@ -98,20 +135,40 @@ export default function GlobeView() {
   }, [stopAutoSpin])
 
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full bg-black">
       <Globe
         ref={globeRef}
-        globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
-        backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
+        globeMaterial={globeMaterial}
+        showGraticules={false}
+        backgroundImageUrl=""
+        // Country hex dots — land layer
+        hexPolygonsData={countriesData.features}
+        hexPolygonResolution={4}
+        hexPolygonMargin={0.7}
+        hexPolygonAltitude={0.004}
+        hexPolygonColor={(d: object) => {
+          const props = (d as { properties?: Record<string, string> }).properties ?? {}
+          const isCanada = props.ISO_A3 === 'CAN' || props.iso_a3 === 'CAN' || props.ADMIN === 'Canada' || props.NAME === 'Canada'
+          return isCanada ? 'rgba(220, 60, 40, 0.95)' : 'rgba(255, 255, 255, 0.5)'
+        }}
         // Points
-        pointsData={points}
+        pointsData={allPoints}
         pointLat="lat"
         pointLng="lng"
-        pointColor="color"
-        pointRadius="size"
+        pointColor={(d: object) => {
+          const p = d as GlobePoint
+          return visibleIds.has(p.id) ? p.color : 'rgba(0,0,0,0)'
+        }}
+        pointRadius={(d: object) => {
+          const p = d as GlobePoint
+          if (!visibleIds.has(p.id)) return 0
+          return Math.max(p.size * (altRef.current / 2.5), 0.1)
+        }}
+        pointResolution={6}
         pointAltitude={0.015}
         pointLabel="label"
         onPointClick={handlePointClick}
+        onZoom={handleZoom}
         // Arcs
         arcsData={visibleArcs}
         arcStartLat="startLat"
@@ -132,8 +189,8 @@ export default function GlobeView() {
         arcDashGap={0.2}
         arcDashAnimateTime={2000}
         // Atmosphere
-        atmosphereColor="#1e40af"
-        atmosphereAltitude={0.15}
+        atmosphereColor="#555555"
+        atmosphereAltitude={0.06}
         width={window.innerWidth}
         height={window.innerHeight}
       />
