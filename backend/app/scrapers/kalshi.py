@@ -1,12 +1,21 @@
 """
 Kalshi scraper: fetch open events/markets and normalize to a common row format.
+
+Optimized to filter server-side: fetch markets per event (event_ticker param)
+instead of all markets, and use asyncio with a 10 req/sec rate limit to batch
+~10 events at a time.
 """
+import asyncio
 import time
-import requests
-from datetime import datetime
 from collections import defaultdict
+from datetime import datetime
+from typing import Any
+
+import httpx
+import requests
 
 BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
+RATE_LIMIT_PER_SEC = 10
 
 TARGET_CATEGORIES = {
     "Politics",
@@ -22,7 +31,11 @@ TARGET_CATEGORIES = {
 }
 
 
-def _paginate(endpoint: str, result_key: str, params: dict) -> list[dict]:
+# ---------------------------------------------------------------------------
+# Sync: events only (used once to get event_tickers we care about)
+# ---------------------------------------------------------------------------
+
+def _paginate_sync(endpoint: str, result_key: str, params: dict[str, Any]) -> list[dict]:
     results = []
     cursor = None
     while True:
@@ -37,12 +50,13 @@ def _paginate(endpoint: str, result_key: str, params: dict) -> list[dict]:
         cursor = data.get("cursor") or None
         if not cursor or not batch:
             break
-        time.sleep(0.05)
+        time.sleep(0.1)
     return results
 
 
 def fetch_event_map() -> dict[str, dict]:
-    all_events = _paginate("events", "events", {"status": "open", "limit": 200})
+    """Return {event_ticker: event_dict} for open events in target categories."""
+    all_events = _paginate_sync("events", "events", {"status": "open", "limit": 200})
     return {
         e["event_ticker"]: e
         for e in all_events
@@ -50,9 +64,78 @@ def fetch_event_map() -> dict[str, dict]:
     }
 
 
-def fetch_all_markets() -> list[dict]:
-    return _paginate("markets", "markets", {"status": "open", "limit": 1000})
+# ---------------------------------------------------------------------------
+# Async: markets per event with rate limiting (10 req/sec)
+# ---------------------------------------------------------------------------
 
+class _RateLimiter:
+    """Allows at most `rate` requests per `period` seconds."""
+
+    def __init__(self, rate: int = RATE_LIMIT_PER_SEC, period: float = 1.0) -> None:
+        self.rate = rate
+        self.period = period
+        self._timestamps: list[float] = []
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> None:
+        async with self._lock:
+            now = time.monotonic()
+            self._timestamps = [t for t in self._timestamps if now - t < self.period]
+            while len(self._timestamps) >= self.rate:
+                wait = self.period - (now - self._timestamps[0])
+                if wait > 0:
+                    await asyncio.sleep(wait)
+                    now = time.monotonic()
+                    self._timestamps = [t for t in self._timestamps if now - t < self.period]
+            self._timestamps.append(now)
+
+
+async def _fetch_markets_for_event(
+    client: httpx.AsyncClient,
+    limiter: _RateLimiter,
+    event_ticker: str,
+) -> tuple[str, list[dict]]:
+    """Fetch all pages of markets for one event. Server-side filter via event_ticker."""
+    results: list[dict] = []
+    cursor: str | None = None
+    while True:
+        await limiter.acquire()
+        params: dict[str, Any] = {
+            "status": "open",
+            "event_ticker": event_ticker,
+            "limit": 200,
+        }
+        if cursor:
+            params["cursor"] = cursor
+        resp = await client.get(f"{BASE_URL}/markets", params=params, timeout=15.0)
+        resp.raise_for_status()
+        data = resp.json()
+        batch = data.get("markets", [])
+        results.extend(batch)
+        cursor = data.get("cursor")
+        if not cursor or not batch:
+            break
+    return (event_ticker, results)
+
+
+async def _fetch_all_markets_for_events(event_tickers: list[str]) -> dict[str, list[dict]]:
+    """Fetch markets for each event concurrently; rate limit 10 req/sec across all."""
+    limiter = _RateLimiter(rate=RATE_LIMIT_PER_SEC, period=1.0)
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    async with httpx.AsyncClient() as client:
+        tasks = [_fetch_markets_for_event(client, limiter, et) for et in event_tickers]
+        pairs = await asyncio.gather(*tasks, return_exceptions=True)
+    for p in pairs:
+        if isinstance(p, Exception):
+            continue
+        event_ticker, markets = p
+        grouped[event_ticker] = markets
+    return dict(grouped)
+
+
+# ---------------------------------------------------------------------------
+# Formatting (unchanged)
+# ---------------------------------------------------------------------------
 
 def _format_body(markets: list[dict]) -> str:
     description = ""
@@ -107,18 +190,33 @@ def event_to_row(event: dict, markets: list[dict]) -> dict:
     }
 
 
-def fetch_all_rows() -> list[dict]:
-    """Fetch all Kalshi events in target categories and return normalized rows."""
+# ---------------------------------------------------------------------------
+# Main entry: fetch events (sync), then markets per event (async, rate-limited)
+# ---------------------------------------------------------------------------
+
+def fetch_all_rows(max_events: int | None = None) -> list[dict]:
+    """
+    Fetch Kalshi events in target categories, then fetch markets per event
+    (server-side filter) with asyncio and 10 req/sec rate limit. Skips the
+    slow "fetch all markets" approach.
+
+    Pass max_events to cap the number of events (e.g. for testing).
+    """
     event_map = fetch_event_map()
-    all_markets = fetch_all_markets()
-    grouped: dict[str, list[dict]] = defaultdict(list)
-    for market in all_markets:
-        et = market.get("event_ticker")
-        if et in event_map:
-            grouped[et].append(market)
+    event_tickers = list(event_map.keys())
+    if max_events is not None:
+        event_tickers = event_tickers[:max_events]
+    if not event_tickers:
+        return []
+
+    grouped = asyncio.run(_fetch_all_markets_for_events(event_tickers))
+
     rows = []
     for event_ticker, markets in grouped.items():
-        event = event_map[event_ticker]
+        event = event_map.get(event_ticker)
+        if not event or not markets:
+            continue
         rows.append(event_to_row(event, markets))
+
     rows.sort(key=lambda r: r["engagement"]["poly_volume"], reverse=True)
     return rows
