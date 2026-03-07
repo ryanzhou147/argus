@@ -44,9 +44,15 @@ VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".avi"}
 # S3 prefixes to scan
 SCAN_PREFIXES = ["media/tiktok/", "media/x/", "images/"]
 
-# Skip "folder" placeholder objects (keys that end with /)
+# Skip "folder" placeholder objects and _thumb.jpg sidecar files.
+# Cloudinary generates thumbnails from videos automatically via .format('jpg').
 def is_real_file(key: str) -> bool:
-    return not key.endswith("/") and PurePosixPath(key).suffix != ""
+    p = PurePosixPath(key)
+    if key.endswith("/") or p.suffix == "":
+        return False
+    if p.stem.endswith("_thumb"):
+        return False
+    return True
 
 
 def classify_key(key: str) -> tuple[str, str] | None:
@@ -88,8 +94,13 @@ def s3_public_url(bucket: str, region: str, key: str) -> str:
 
 
 def find_content_row(cur, s3_url: str, content_id: str) -> tuple | None:
-    """Return (id,) from content_table matching by s3 URL first, then by id."""
-    # Match by the S3 URL stored in image_url
+    """
+    Return (id,) from content_table using three strategies in order:
+    1. image_url exactly equals the S3 URL (scraper stored the full S3 URL).
+    2. id::text exactly equals content_id (S3 filename is the DB UUID).
+    3. url LIKE '%{content_id}%' (platform ID embedded in the content URL,
+       e.g. TikTok: https://tiktok.com/@user/video/7613100867075509512).
+    """
     cur.execute(
         "SELECT id FROM content_table WHERE image_url = %s AND s3_url IS NULL LIMIT 1",
         (s3_url,),
@@ -98,10 +109,18 @@ def find_content_row(cur, s3_url: str, content_id: str) -> tuple | None:
     if row:
         return row
 
-    # Match by content_table.id directly (works when ID in S3 path == UUID in DB)
     cur.execute(
         "SELECT id FROM content_table WHERE id::text = %s AND s3_url IS NULL LIMIT 1",
         (content_id,),
+    )
+    row = cur.fetchone()
+    if row:
+        return row
+
+    # Platform ID embedded in URL (TikTok, X, etc.)
+    cur.execute(
+        "SELECT id FROM content_table WHERE url LIKE %s AND s3_url IS NULL LIMIT 1",
+        (f"%{content_id}%",),
     )
     return cur.fetchone()
 
