@@ -165,7 +165,7 @@ export default function GlobeView() {
     if (p?.id) {
       stopAutoSpin()
       setSelectedEventId(p.id)
-      globeRef.current?.pointOfView({ lat: p.lat - 3, lng: p.lng, altitude: 0.5 }, 800)
+      globeRef.current?.pointOfView({ lat: p.lat - 3, lng: p.lng, altitude: 0.3 }, 800)
     }
   }, [setSelectedEventId, stopAutoSpin])
 
@@ -281,7 +281,7 @@ export default function GlobeView() {
               onClick={() => {
                 stopAutoSpin()
                 setSelectedEventId(p.id)
-                globeRef.current?.pointOfView({ lat: p.lat - 3, lng: p.lng, altitude: 0.5 }, 800)
+                globeRef.current?.pointOfView({ lat: p.lat - 3, lng: p.lng, altitude: 0.3 }, 800)
                 setClusterGroup(null)
               }}
               style={{
