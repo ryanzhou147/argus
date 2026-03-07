@@ -36,6 +36,7 @@ Reddit Scraper/.env.*
 natural-disasters/*.db
 natural-disasters/*.db-shm
 natural-disasters/*.db-wal
+natural-disasters/.env
 
 # IDEs and Editors
 .idea/

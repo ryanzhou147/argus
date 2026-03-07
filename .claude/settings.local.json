@@ -4,7 +4,10 @@
       "WebFetch(domain:eonet.gsfc.nasa.gov)",
       "Bash(python:*)",
       "Bash(env/Scripts/pip install:*)",
-      "Bash(env/Scripts/python:*)"
+      "Bash(env/Scripts/python:*)",
+      "WebSearch",
+      "WebFetch(domain:chutes.ai)",
+      "WebFetch(domain:docs.litellm.ai)"
     ]
   }
 }
