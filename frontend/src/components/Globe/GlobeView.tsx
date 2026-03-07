@@ -22,12 +22,12 @@ export default function GlobeView() {
   const { events, timelinePosition, activeFilters, setSelectedEventId, arcs, isAutoSpinning, stopAutoSpin } = useAppContext()
   const { activeHighlights } = useAgentContext()
 
-  // Futuristic globe material — dark navy, no texture
+  // Monochrome globe material — medium dark grey base
   const globeMaterial = useMemo(() => new THREE.MeshPhongMaterial({
-    color: '#0a1628',
-    emissive: '#0a1628',
-    specular: '#1e4080',
-    shininess: 8,
+    color: '#2a2a2a',
+    emissive: '#1a1a1a',
+    specular: '#555555',
+    shininess: 6,
   }), [])
 
   // Country hex-dot layer
@@ -145,8 +145,8 @@ export default function GlobeView() {
         hexPolygonsData={countriesData.features}
         hexPolygonResolution={4}
         hexPolygonMargin={0.4}
-        hexPolygonAltitude={0.001}
-        hexPolygonColor={() => 'rgba(80, 140, 220, 0.45)'}
+        hexPolygonAltitude={0.004}
+        hexPolygonColor={() => 'rgba(255, 255, 255, 0.6)'}
         // Points
         pointsData={allPoints}
         pointLat="lat"
@@ -185,8 +185,8 @@ export default function GlobeView() {
         arcDashGap={0.2}
         arcDashAnimateTime={2000}
         // Atmosphere
-        atmosphereColor="#00bfff"
-        atmosphereAltitude={0.2}
+        atmosphereColor="#888888"
+        atmosphereAltitude={0.1}
         width={window.innerWidth}
         height={window.innerHeight}
       />
