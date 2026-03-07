@@ -7,6 +7,8 @@ import FilterBar from './components/Filters/FilterBar'
 import TimelineSlider from './components/Timeline/TimelineSlider'
 import EventModal from './components/Modal/EventModal'
 import Legend from './components/Legend'
+import AgentLauncherButton from './components/Agent/AgentLauncherButton'
+import AgentPanel from './components/Agent/AgentPanel'
 
 function LoadingOverlay() {
   return (
@@ -95,6 +97,12 @@ export default function App() {
 
       {/* Event modal — right side overlay */}
       <EventModal />
+
+      {/* Agent panel — left slide-out overlay */}
+      <AgentPanel />
+
+      {/* Agent launcher button — top-right corner */}
+      <AgentLauncherButton />
     </div>
   )
 }

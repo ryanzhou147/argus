@@ -78,3 +78,43 @@ Icon
 # Database
 *.sqlite3
 *.db
+*.pyo
+
+# Virtual environments (any subfolder named env/venv/.venv)
+**/env/
+**/.venv/
+**/venv/
+**/ENV/
+
+# Backend
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Reddit Scraper
+Reddit Scraper/.env
+Reddit Scraper/.env.*
+!Reddit Scraper/.env.example
+
+# Natural disasters scraper
+natural-disasters/*.db
+natural-disasters/*.db-shm
+natural-disasters/*.db-wal
+natural-disasters/.env
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+*.json

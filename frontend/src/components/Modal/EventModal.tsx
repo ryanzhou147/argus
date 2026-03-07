@@ -1,8 +1,10 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { getEventById } from '../../api/client'
 import type { EventDetail } from '../../types/events'
 import { useAppContext, EVENT_TYPE_COLORS, EVENT_TYPE_LABELS } from '../../context/AppContext'
+import { useAgentContext } from '../../context/AgentContext'
 import { getEventImageUrl } from '../../utils/mediaConfig'
+import FinancialImpactSection from '../Agent/FinancialImpactSection'
 
 function ConfidenceBar({ score }: { score: number }) {
   const pct = Math.round(score * 100)
@@ -36,9 +38,11 @@ function RelTypeChip({ type }: { type: string }) {
 
 export default function EventModal() {
   const { selectedEventId, setSelectedEventId } = useAppContext()
+  const { agentResponse, activeNavigationPlan } = useAgentContext()
   const [detail, setDetail] = useState<EventDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!selectedEventId) {
@@ -48,9 +52,16 @@ export default function EventModal() {
     setLoading(true)
     setError(null)
     getEventById(selectedEventId)
-      .then(d => { setDetail(d); setLoading(false) })
+      .then(d => {
+        setDetail(d)
+        setLoading(false)
+        // Scroll to top when opened by agent navigation plan
+        if (activeNavigationPlan?.open_modal_event_id === selectedEventId) {
+          setTimeout(() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' }), 50)
+        }
+      })
       .catch(e => { setError(String(e)); setLoading(false) })
-  }, [selectedEventId])
+  }, [selectedEventId, activeNavigationPlan])
 
   const close = useCallback(() => setSelectedEventId(null), [setSelectedEventId])
 
@@ -77,6 +88,7 @@ export default function EventModal() {
       )}
 
       <div
+        ref={scrollRef}
         className="h-full ml-auto w-full pointer-events-auto overflow-y-auto flex flex-col"
         style={{
           background: 'rgba(15,23,42,0.97)',
@@ -182,6 +194,11 @@ export default function EventModal() {
                 <p className="text-slate-300 text-sm leading-relaxed">{detail.canada_impact_summary}</p>
               </div>
 
+              {/* Financial impact from agent */}
+              {agentResponse?.financial_impact && agentResponse.top_event_id === detail.id && (
+                <FinancialImpactSection impact={agentResponse.financial_impact} />
+              )}
+
               {/* Entities */}
               {detail.entities.length > 0 && (
                 <div>
@@ -206,6 +223,10 @@ export default function EventModal() {
                       { label: 'Reddit Comments', value: detail.engagement.reddit_comments, icon: '💬' },
                       { label: 'Polymarket Volume', value: detail.engagement.poly_volume, icon: '📊' },
                       { label: 'Poly Comments', value: detail.engagement.poly_comments, icon: '🗨' },
+                      { label: 'Twitter Likes', value: detail.engagement.twitter_likes, icon: '♥' },
+                      { label: 'Twitter Views', value: detail.engagement.twitter_views, icon: '👁' },
+                      { label: 'Twitter Comments', value: detail.engagement.twitter_comments, icon: '🐦' },
+                      { label: 'Twitter Reposts', value: detail.engagement.twitter_reposts, icon: '🔁' },
                     ].map(({ label, value, icon }) => (
                       <div key={label} className="bg-slate-800/60 rounded-lg p-2.5 border border-slate-700/50">
                         <div className="text-xs text-slate-500 mb-0.5">{icon} {label}</div>
