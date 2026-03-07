@@ -19,7 +19,7 @@ interface GlobePoint {
 
 export default function GlobeView() {
   const globeRef = useRef<any>(null)
-  const { events, timelinePosition, activeFilters, selectedEventId, setSelectedEventId, arcs, isAutoSpinning, stopAutoSpin } = useAppContext()
+  const { events, timelinePosition, activeFilters, selectedEventId, setSelectedEventId, arcs, stopAutoSpin } = useAppContext()
   const { activeHighlights } = useAgentContext()
 
   // Monochrome globe material — medium dark grey base
@@ -84,6 +84,48 @@ export default function GlobeView() {
     })
   }, [events])
 
+  // Cluster hover modal
+  const mousePosRef = useRef({ x: 0, y: 0 })
+  const clusterHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isOverModalRef = useRef(false)
+  const [clusterGroup, setClusterGroup] = useState<{ points: GlobePoint[], x: number, y: number } | null>(null)
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    mousePosRef.current = { x: e.clientX, y: e.clientY }
+  }, [])
+
+  const scheduleHide = useCallback(() => {
+    if (clusterHideTimer.current) clearTimeout(clusterHideTimer.current)
+    clusterHideTimer.current = setTimeout(() => {
+      if (!isOverModalRef.current) setClusterGroup(null)
+    }, 250)
+  }, [])
+
+  const handlePointHover = useCallback((point: object | null) => {
+    if (clusterHideTimer.current) {
+      clearTimeout(clusterHideTimer.current)
+      clusterHideTimer.current = null
+    }
+    const p = point as GlobePoint | null
+    if (!p) {
+      scheduleHide()
+      return
+    }
+    // Threshold scales directly with altitude — smaller when zoomed in, larger when zoomed out
+    const threshold = altRef.current * 2
+    const nearby = allPoints.filter(pt => {
+      if (!visibleIds.has(pt.id)) return false
+      const dlat = pt.lat - p.lat
+      const dlng = pt.lng - p.lng
+      return Math.sqrt(dlat * dlat + dlng * dlng) < threshold
+    })
+    if (nearby.length > 1) {
+      setClusterGroup({ points: nearby, x: mousePosRef.current.x, y: mousePosRef.current.y })
+    } else {
+      setClusterGroup(null)
+    }
+  }, [allPoints, visibleIds, scheduleHide])
+
   // Build highlighted arc pairs from agent context
   const highlightedArcKeys = useMemo(() => {
     return new Set(activeHighlights.map(h => [h.event_a_id, h.event_b_id].sort().join('|')))
@@ -134,26 +176,14 @@ export default function GlobeView() {
     }
   }, [])
 
-  // Auto-rotate globe based on isAutoSpinning state
-  useEffect(() => {
-    const globe = globeRef.current
-    if (!globe) return
-    globe.controls().autoRotate = isAutoSpinning
-    globe.controls().autoRotateSpeed = 0.3
-  }, [isAutoSpinning])
 
-  // Stop auto-spin on any user interaction with globe controls
-  useEffect(() => {
-    const globe = globeRef.current
-    if (!globe) return
-    const controls = globe.controls()
-    const handleStart = () => stopAutoSpin()
-    controls.addEventListener('start', handleStart)
-    return () => controls.removeEventListener('start', handleStart)
-  }, [stopAutoSpin])
+  const clusterPointIds = useMemo(
+    () => new Set(clusterGroup?.points.map(p => p.id) ?? []),
+    [clusterGroup]
+  )
 
   return (
-    <div className="w-full h-full bg-black">
+    <div className="w-full h-full bg-black" onMouseMove={handleMouseMove}>
       <Globe
         ref={globeRef}
         globeMaterial={globeMaterial}
@@ -184,8 +214,12 @@ export default function GlobeView() {
         }}
         pointResolution={6}
         pointAltitude={0.015}
-        pointLabel="label"
+        pointLabel={(d: object) => {
+          const p = d as GlobePoint
+          return clusterPointIds.has(p.id) ? '' : p.label
+        }}
         onPointClick={handlePointClick}
+        onPointHover={handlePointHover}
         onZoom={handleZoom}
         // Arcs
         arcsData={visibleArcs}
@@ -212,6 +246,62 @@ export default function GlobeView() {
         height={window.innerHeight}
       />
       <AgentNavigationOverlay globeRef={globeRef} />
+
+      {clusterGroup && clusterGroup.points.length > 1 && (
+        <div
+          style={{
+            position: 'fixed',
+            left: clusterGroup.x + 14,
+            top: clusterGroup.y - 10,
+            zIndex: 1000,
+            background: '#111111',
+            border: '1px solid #2a2a2a',
+            fontFamily: 'Space Mono, Courier New, monospace',
+            fontSize: '11px',
+            width: '220px',
+            maxHeight: '240px',
+            overflowY: 'auto',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.7)',
+          }}
+          onMouseEnter={() => {
+            isOverModalRef.current = true
+            if (clusterHideTimer.current) {
+              clearTimeout(clusterHideTimer.current)
+              clusterHideTimer.current = null
+            }
+          }}
+          onMouseLeave={() => {
+            isOverModalRef.current = false
+            scheduleHide()
+          }}
+        >
+          {clusterGroup.points.map((p, i) => (
+            <div
+              key={p.id}
+              onClick={() => {
+                stopAutoSpin()
+                setSelectedEventId(p.id)
+                globeRef.current?.pointOfView({ lat: p.lat - 3, lng: p.lng, altitude: 0.5 }, 800)
+                setClusterGroup(null)
+              }}
+              style={{
+                padding: '7px 10px',
+                borderBottom: i < clusterGroup.points.length - 1 ? '1px solid #1e1e1e' : 'none',
+                cursor: 'pointer',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = '#1a1a1a' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+            >
+              <div style={{ color: '#d0d0d0', fontWeight: 'bold', marginBottom: '2px', lineHeight: '1.3' }}>
+                {p.event.title}
+              </div>
+              <div style={{ color: p.color, fontSize: '10px' }}>
+                {p.event.event_type.replace(/_/g, ' ')}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
