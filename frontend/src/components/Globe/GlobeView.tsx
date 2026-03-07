@@ -234,7 +234,17 @@ export default function GlobeView() {
           if (arc.highlighted) return ['#ffffffaa', '#ffffff44']
           return [`${arc.color}55`, `${arc.color}22`]
         }}
-        arcAltitude={0.25}
+        arcAltitude={(d: object) => {
+          const arc = d as ArcData
+          const toRad = (deg: number) => deg * Math.PI / 180
+          const dLat = toRad(arc.endLat - arc.startLat)
+          const dLng = toRad(arc.endLng - arc.startLng)
+          const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(arc.startLat)) * Math.cos(toRad(arc.endLat)) * Math.sin(dLng / 2) ** 2
+          const distDeg = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * (180 / Math.PI)
+          // Scale: 0° → 0.05, 180° → 0.4
+          return 0.05 + (distDeg / 180) * 0.35
+        }}
         arcStroke={(d: object) => {
           const arc = d as ArcData & { highlighted?: boolean }
           return arc.highlighted ? 0.8 : 0.25
