@@ -6,25 +6,24 @@ import GlobeView from './components/Globe/GlobeView'
 import FilterBar from './components/Filters/FilterBar'
 import TimelineSlider from './components/Timeline/TimelineSlider'
 import EventModal from './components/Modal/EventModal'
-import Legend from './components/Legend'
 import AgentLauncherButton from './components/Agent/AgentLauncherButton'
 import AgentPanel from './components/Agent/AgentPanel'
 
 function LoadingOverlay() {
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950">
-      <div className="w-12 h-12 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
-      <p className="text-slate-400 text-sm">Loading event intelligence...</p>
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center" style={{ background: 'var(--bg-base)' }}>
+      <div className="w-8 h-8 border border-[#505050] border-t-transparent animate-spin mb-4" style={{ borderRadius: 0 }} />
+      <p className="text-xs tracking-widest uppercase" style={{ color: 'var(--text-secondary)' }}>Loading event intelligence...</p>
     </div>
   )
 }
 
 function ErrorOverlay({ message }: { message: string }) {
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950">
-      <p className="text-red-400 text-sm mb-2">Failed to connect to backend.</p>
-      <p className="text-slate-500 text-xs">{message}</p>
-      <p className="text-slate-500 text-xs mt-2">Make sure the FastAPI server is running at http://localhost:8000</p>
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center" style={{ background: 'var(--bg-base)' }}>
+      <p className="text-xs mb-2 tracking-wider uppercase" style={{ color: '#8a3030' }}>Failed to connect to backend.</p>
+      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{message}</p>
+      <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>Make sure the FastAPI server is running at http://localhost:8000</p>
     </div>
   )
 }
@@ -98,7 +97,7 @@ export default function App() {
   if (error) return <ErrorOverlay message={error} />
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950">
+    <div className="relative w-screen h-screen overflow-hidden" style={{ background: 'var(--bg-base)' }}>
       {/* Globe — full screen base layer */}
       <div className="absolute inset-0">
         <GlobeView />
@@ -106,9 +105,6 @@ export default function App() {
 
       {/* Filter bar — top overlay */}
       <FilterBar />
-
-      {/* Legend — bottom-left overlay */}
-      <Legend />
 
       {/* Timeline slider — bottom overlay */}
       <TimelineSlider />

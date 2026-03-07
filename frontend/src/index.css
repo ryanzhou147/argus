@@ -1,6 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --bg-base: #080808;
+  --bg-surface: #111111;
+  --bg-raised: #1a1a1a;
+  --bg-hover: #222222;
+  --border: #252525;
+  --border-strong: #383838;
+  --text-primary: #c0c0c0;
+  --text-secondary: #666666;
+  --text-muted: #404040;
+  --accent: #909090;
+}
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -12,23 +27,23 @@ html, body, #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background-color: #020617;
+  background-color: var(--bg-base);
+  font-family: 'Space Mono', 'Courier New', monospace;
 }
 
-/* Scrollbar styling for modal */
+/* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 4px;
+  width: 3px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0f172a;
+  background: var(--bg-base);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 2px;
+  background: var(--border-strong);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: var(--accent);
 }

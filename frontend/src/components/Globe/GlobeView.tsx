@@ -36,7 +36,7 @@ export default function GlobeView() {
     fetch('/countries.geojson').then(r => r.json()).then(setCountriesData)
   }, [])
 
-  // Track camera altitude via ref so the points array never recalculates on zoom.
+// Track camera altitude via ref so the points array never recalculates on zoom.
   // A rAF-throttled tick triggers re-renders so the pointRadius accessor picks up
   // the new altitude without rebuilding or rememoising the points array.
   const altRef = useRef(2.5)
@@ -77,7 +77,7 @@ export default function GlobeView() {
         lng: evt.primary_longitude,
         color: baseColor,
         size: 0.2,
-        label: `<div style="background:rgba(15,23,42,0.9);color:white;padding:8px 12px;border-radius:6px;font-size:12px;max-width:200px;border:1px solid ${baseColor}"><strong>${evt.title}</strong><br/><span style="color:${baseColor};font-size:11px">${evt.event_type.replace(/_/g, ' ')}</span></div>`,
+        label: `<div style="background:#111111;color:#b8b8b8;padding:6px 10px;font-size:11px;max-width:200px;border:1px solid #2a2a2a;font-family:Space Mono,Courier New,monospace"><strong style="color:#d0d0d0;font-size:11px">${evt.title}</strong><br/><span style="color:${baseColor};font-size:10px">${evt.event_type.replace(/_/g, ' ')}</span></div>`,
         event: evt,
         isPulsing: false,
       }
@@ -146,7 +146,11 @@ export default function GlobeView() {
         hexPolygonResolution={4}
         hexPolygonMargin={0.7}
         hexPolygonAltitude={0.004}
-        hexPolygonColor={() => 'rgba(255, 255, 255, 0.6)'}
+        hexPolygonColor={(d: object) => {
+          const props = (d as { properties?: Record<string, string> }).properties ?? {}
+          const isCanada = props.ISO_A3 === 'CAN' || props.iso_a3 === 'CAN' || props.ADMIN === 'Canada' || props.NAME === 'Canada'
+          return isCanada ? 'rgba(220, 60, 40, 0.95)' : 'rgba(255, 255, 255, 0.5)'
+        }}
         // Points
         pointsData={allPoints}
         pointLat="lat"
