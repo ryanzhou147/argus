@@ -35,6 +35,7 @@ class ContentItem(BaseModel):
     # Consider changing SQL to TEXT if storing labels; or store numeric and map in app.
     market_signal: Optional[str] = None
     image_url: Optional[str] = None
+    image_s3_url: Optional[str] = None
 
 
 
@@ -118,6 +119,7 @@ class Event(BaseModel):
     confidence_score: float
     canada_impact_summary: str
     image_url: Optional[str] = None
+    image_s3_url: Optional[str] = None
 
 
 class EventDetail(Event):

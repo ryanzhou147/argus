@@ -20,6 +20,7 @@ export function getEventImageUrl(publicId: string | null | undefined, width = 80
   try {
     const img = cld.image(publicId)
     img.resize(fill().width(width).height(height).gravity(autoGravity()))
+    img.format('jpg') // forces JPEG delivery; also generates a thumbnail if publicId is a video asset
     return img.toURL()
   } catch {
     return '/placeholder-event.svg'
@@ -27,3 +28,18 @@ export function getEventImageUrl(publicId: string | null | undefined, width = 80
 }
 
 export const hasCloudinary = !!CLOUD_NAME
+
+/**
+ * Returns { primary: Cloudinary URL, fallback: S3 URL | null }
+ * Primary is the Cloudinary-transformed URL (720x720 square fill).
+ * Fallback is the raw S3 URL, used in <img onError>.
+ */
+export function getMediaUrls(
+  publicId: string | null | undefined,
+  s3Url: string | null | undefined
+): { primary: string; fallback: string | null } {
+  return {
+    primary: getEventImageUrl(publicId),
+    fallback: s3Url ?? null,
+  }
+}

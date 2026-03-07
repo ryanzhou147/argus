@@ -1,0 +1,1 @@
+ALTER TABLE content_table ADD COLUMN IF NOT EXISTS s3_url TEXT;

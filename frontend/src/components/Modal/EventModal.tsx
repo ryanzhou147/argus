@@ -3,7 +3,7 @@ import { getEventById } from '../../api/client'
 import type { EventDetail } from '../../types/events'
 import { useAppContext, EVENT_TYPE_COLORS, EVENT_TYPE_LABELS } from '../../context/AppContext'
 import { useAgentContext } from '../../context/AgentContext'
-import { getEventImageUrl } from '../../utils/mediaConfig'
+import { getMediaUrls } from '../../utils/mediaConfig'
 import FinancialImpactSection from '../Agent/FinancialImpactSection'
 
 function ConfidenceBar({ score }: { score: number }) {
@@ -124,12 +124,24 @@ export default function EventModal() {
           <div className="flex flex-col">
             {/* Hero image */}
             <div className="relative h-48 bg-slate-800 flex-shrink-0 overflow-hidden">
-              <img
-                src={getEventImageUrl(detail.image_url)}
-                alt={detail.title}
-                className="w-full h-full object-cover"
-                onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder-event.svg' }}
-              />
+              {(() => {
+                const { primary, fallback } = getMediaUrls(detail.image_url, detail.image_s3_url)
+                return (
+                  <img
+                    src={primary}
+                    alt={detail.title}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      const img = e.currentTarget
+                      if (fallback && img.src !== fallback) {
+                        img.src = fallback
+                      } else {
+                        img.src = '/placeholder-event.svg'
+                      }
+                    }}
+                  />
+                )
+              })()}
               <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(15,23,42,0.9) 0%, transparent 60%)' }} />
               {/* Type badge */}
               <span
