@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:eonet.gsfc.nasa.gov)",
+      "Bash(python:*)",
+      "Bash(env/Scripts/pip install:*)",
+      "Bash(env/Scripts/python:*)"
+    ]
+  }
+}
