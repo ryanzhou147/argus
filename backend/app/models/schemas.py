@@ -68,10 +68,10 @@ class Engagement(BaseModel):
     reddit_comments: int
     poly_volume: float  # SQL: FLOAT
     poly_comments: int
-    twitter_likes: Optional[int] = None
-    twitter_views: Optional[int] = None
-    twitter_comments: Optional[int] = None
-    twitter_reposts: Optional[int] = None
+    twitter_likes: int
+    twitter_views: int
+    twitter_comments: int
+    twitter_reposts: int
 
 
 # ------------------------------------------------------------------
@@ -83,10 +83,10 @@ class EngagementSnapshot(BaseModel):
     reddit_comments: int
     poly_volume: float  # SQL engagement.poly_volume is FLOAT
     poly_comments: int
-    twitter_likes: Optional[int] = None
-    twitter_views: Optional[int] = None
-    twitter_comments: Optional[int] = None
-    twitter_reposts: Optional[int] = None
+    twitter_likes: int
+    twitter_views: int
+    twitter_comments: int
+    twitter_reposts: int
 
 
 class SourceCard(BaseModel):

@@ -30,6 +30,16 @@ App runs at: http://localhost:5173
 
 ## Environment Variables
 
+### Backend
+
+| Variable | Required | Description |
+|---|---|---|
+| `GEMINI_API_KEY` | No* | Google Gemini API key for AI agent features. Get one at https://aistudio.google.com/ — agent returns a graceful fallback response if missing. |
+
+*The app runs without it. Agent features degrade gracefully to internal-data-only answers.
+
+### Frontend
+
 | Variable | Required | Description |
 |---|---|---|
 | `VITE_API_URL` | No | FastAPI backend URL. Defaults to `http://localhost:8000` |
@@ -42,22 +52,25 @@ hackcanada/
 ├── backend/                  # FastAPI backend
 │   └── app/
 │       ├── main.py           # FastAPI app + CORS
-│       ├── models/           # Pydantic schemas + enums
-│       ├── routers/          # GET /events, /filters, /timeline
-│       ├── services/         # Business logic
-│       ├── repositories/     # Abstract base + MockEventRepository
+│       ├── config.py         # GEMINI_API_KEY + agent config
+│       ├── models/           # Pydantic schemas, enums, agent_schemas
+│       ├── routers/          # GET /events, /filters, /timeline + POST /agent/query
+│       ├── services/         # event_service, agent_service, gemini_client, agent_tools
+│       ├── repositories/     # Abstract base + MockEventRepository (with update + text search)
 │       └── data/             # seed_data.py (20 events, 50 articles, 40 relationships)
 └── frontend/                 # React 19 + Vite 6 + TypeScript 5
     └── src/
-        ├── api/client.ts     # Typed fetch calls to FastAPI
-        ├── types/events.ts   # TypeScript interfaces matching Pydantic models
-        ├── context/          # AppContext (timeline, filters, selected event)
+        ├── api/client.ts     # Typed fetch calls to FastAPI (incl. postAgentQuery)
+        ├── types/            # events.ts + agent.ts TypeScript interfaces
+        ├── context/          # AppContext (timeline, filters, auto-spin) + AgentContext
         ├── utils/mediaConfig.ts  # Cloudinary URL builder with fallback
         └── components/
-            ├── Globe/        # react-globe.gl with event nodes + arcs
+            ├── Globe/        # react-globe.gl with event nodes, arcs, agent pulse/highlight
             ├── Timeline/     # Scrub + play/pause timeline slider
             ├── Filters/      # Event-type filter bar
-            └── Modal/        # Event detail side panel
+            ├── Modal/        # Event detail side panel + financial impact section
+            └── Agent/        # AgentLauncherButton, AgentPanel, AgentAnswerView,
+                              # AgentNavigationOverlay, FinancialImpactSection
 ```
 
 ## API Endpoints
@@ -69,6 +82,33 @@ hackcanada/
 | GET | `/events/{id}/related` | Related events with relationship metadata |
 | GET | `/filters` | Available event types and relationship types |
 | GET | `/timeline` | All events ordered by start_time with min/max bounds |
+| POST | `/agent/query` | AI agent: classify, retrieve, Gemini synthesis, globe navigation plan |
+
+## AI Agent
+
+The AI Globe Copilot is accessible via the brain icon in the top-right corner.
+
+**What it does:**
+- Answers natural-language questions about global events and their impact on Canada
+- Navigates the globe cinematically to relevant events (camera, pulse nodes, highlight arcs, auto-open modal)
+- Returns structured confidence signals (high/medium/low) and caution banners for low-confidence answers
+- Falls back to cited external sources when internal data is insufficient
+- Supports controlled mock-data updates for the local demo
+
+**Query types:**
+- `event_explanation` — "Why did the OPEC production cut happen?"
+- `impact_analysis` — "What is the financial impact of the Red Sea disruption on Canada?"
+- `connection_discovery` — "What events are related to semiconductor export controls?"
+- `entity_relevance` — "What does this mean for Canadian oil?"
+- `update_request` — "Update the impact note for the OPEC event to..."
+
+**Setup with Gemini:**
+```bash
+export GEMINI_API_KEY=your_key_here
+uvicorn app.main:app --reload --port 8000
+```
+
+Without the key, the agent returns a graceful low-confidence response and the rest of the app continues to function normally.
 
 ## Event Types
 

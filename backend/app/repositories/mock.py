@@ -1,3 +1,4 @@
+import copy
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -22,13 +23,28 @@ def _parse_dt(s: Optional[str]) -> Optional[datetime]:
     return dt
 
 
+_UPDATABLE_FIELDS = {
+    "canada_impact_summary",
+    "summary",
+    "confidence_score",
+    "twitter_likes",
+    "twitter_views",
+    "twitter_comments",
+    "twitter_reposts",
+    "reddit_upvotes",
+    "reddit_comments",
+    "poly_volume",
+    "poly_comments",
+}
+
+
 class MockEventRepository(EventRepository):
     def __init__(self) -> None:
-        # Index seed data for O(1) lookups
+        # Index seed data for O(1) lookups (deep copy so in-memory updates don't mutate module globals)
         self._sources = {s["id"]: s for s in SOURCES}
         self._content_items = {c["id"]: c for c in CONTENT_ITEMS}
         self._entities = {e["id"]: e for e in ENTITIES}
-        self._events = {e["id"]: e for e in EVENTS}
+        self._events = {e["id"]: copy.deepcopy(e) for e in EVENTS}
         self._engagements = {e["event_id"]: e for e in ENGAGEMENTS}
 
         # Build reverse maps
@@ -172,12 +188,105 @@ class MockEventRepository(EventRepository):
                 "reddit_comments": eng["reddit_comments"],
                 "poly_volume": float(eng["poly_volume"]),
                 "poly_comments": eng["poly_comments"],
-                "twitter_likes": eng.get("twitter_likes"),
-                "twitter_views": eng.get("twitter_views"),
-                "twitter_comments": eng.get("twitter_comments"),
-                "twitter_reposts": eng.get("twitter_reposts"),
+                "twitter_likes": eng.get("twitter_likes", 0),
+                "twitter_views": eng.get("twitter_views", 0),
+                "twitter_comments": eng.get("twitter_comments", 0),
+                "twitter_reposts": eng.get("twitter_reposts", 0),
             }
         else:
             base["engagement"] = None
 
         return base
+
+    def update_event_field(self, event_id: str, field_name: str, new_value: object) -> dict:
+        if event_id not in self._events:
+            return {"status": "failure", "message": f"Event '{event_id}' not found."}
+        if field_name not in _UPDATABLE_FIELDS:
+            return {
+                "status": "failure",
+                "message": f"Field '{field_name}' is not updatable. Allowed fields: {sorted(_UPDATABLE_FIELDS)}",
+            }
+
+        engagement_fields = {"twitter_likes", "twitter_views", "twitter_comments", "twitter_reposts",
+                             "reddit_upvotes", "reddit_comments", "poly_volume", "poly_comments"}
+        if field_name in engagement_fields:
+            eng = self._engagements.get(event_id)
+            if eng is None:
+                return {"status": "failure", "message": f"No engagement record found for event '{event_id}'."}
+            eng[field_name] = new_value
+        else:
+            self._events[event_id][field_name] = new_value
+
+        return {
+            "status": "success",
+            "event_id": event_id,
+            "field_name": field_name,
+            "new_value": new_value,
+        }
+
+    def search_events_by_text(
+        self,
+        query: str,
+        event_types: Optional[list] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        limit: int = 10,
+    ) -> List[dict]:
+        query_lower = query.lower()
+        results = []
+        for e in self._events.values():
+            if event_types and e["event_type"] not in event_types:
+                continue
+            evt_start = _parse_dt(e["start_time"])
+            if start_time and evt_start < start_time:
+                continue
+            if end_time and evt_start > end_time:
+                continue
+
+            searchable = " ".join([
+                e.get("title", ""),
+                e.get("summary", ""),
+                e.get("canada_impact_summary", ""),
+            ]).lower()
+
+            # Token-based matching: split query into meaningful words (3+ chars)
+            stop_words = {"the", "and", "for", "are", "was", "what", "how", "why",
+                          "does", "did", "will", "can", "this", "that", "with", "from",
+                          "have", "has", "had", "its", "but", "not", "you", "all",
+                          "which", "been", "would", "could", "should"}
+            tokens = [w for w in query_lower.split() if len(w) >= 3 and w not in stop_words]
+            if not tokens:
+                tokens = query_lower.split()
+
+            match_count = sum(1 for t in tokens if t in searchable)
+            if match_count == 0:
+                continue
+
+            score = match_count / len(tokens) * 100
+            content_ids = self._event_content.get(e["id"], [])
+            entity_names = []
+            seen: set[str] = set()
+            for cid in content_ids:
+                for ce in self._content_entities.get(cid, []):
+                    eid = ce["entity_id"]
+                    if eid not in seen:
+                        seen.add(eid)
+                        ent = self._entities.get(eid)
+                        if ent:
+                            entity_names.append(ent["canonical_name"])
+
+            results.append({
+                "id": e["id"],
+                "title": e["title"],
+                "event_type": e["event_type"],
+                "summary": e.get("summary", ""),
+                "canada_impact_summary": e.get("canada_impact_summary", ""),
+                "primary_latitude": e["primary_latitude"],
+                "primary_longitude": e["primary_longitude"],
+                "confidence_score": e["confidence_score"],
+                "key_entities": entity_names[:5],
+                "relevance_score": score,
+            })
+
+        results.sort(key=lambda x: x["relevance_score"], reverse=True)
+        return results[:limit]
