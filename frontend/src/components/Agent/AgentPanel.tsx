@@ -47,7 +47,19 @@ export default function AgentPanel() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mediaRecorder = new MediaRecorder(stream)
+
+      // Pick best supported MIME type across browsers (Chrome: webm, Firefox: ogg)
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+        ? 'audio/mp4'
+        : ''
+
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream)
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
 
@@ -58,35 +70,39 @@ export default function AgentPanel() {
       }
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-        audioChunksRef.current = [] // reset
-        
+        // Use actual MIME type from recorder, not a hardcoded assumption
+        const actualMime = mediaRecorder.mimeType || 'audio/webm'
+        const ext = actualMime.includes('mp4') ? 'mp4' : actualMime.includes('ogg') ? 'ogg' : 'webm'
+        const audioBlob = new Blob(audioChunksRef.current, { type: actualMime })
+        audioChunksRef.current = []
+
         setIsTranscribing(true)
         setIsRecording(false)
 
         try {
           const formData = new FormData()
-          formData.append('file', audioBlob, 'audio.webm')
+          formData.append('file', audioBlob, `audio.${ext}`)
           formData.append('model_id', 'scribe_v1')
-          
+
           const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
             method: 'POST',
             headers: {
-              'xi-api-key': import.meta.env.VITE_ELEVENLABS_API_KEY || ''
+              'xi-api-key': import.meta.env.VITE_ELEVENLABS_API_KEY || '',
             },
-            body: formData
+            body: formData,
           })
-          
+
           if (!response.ok) {
-            throw new Error(`Failed to transcribe: ${response.status} ${response.statusText}`)
+            const errText = await response.text()
+            throw new Error(`ElevenLabs ${response.status}: ${errText}`)
           }
-          
+
           const data = await response.json()
           if (data.text) {
-            setInputValue(prev => prev.length > 0 ? `${prev} ${data.text}` : data.text)
+            setInputValue(prev => (prev.length > 0 ? `${prev} ${data.text}` : data.text))
           }
         } catch (err) {
-          console.error('Error transcribing audio:', err)
+          console.error('Voice transcription error:', err)
         } finally {
           setIsTranscribing(false)
           stream.getTracks().forEach(track => track.stop())
@@ -96,12 +112,14 @@ export default function AgentPanel() {
       mediaRecorder.start()
       setIsRecording(true)
     } catch (err) {
-      console.error('Error accessing microphone:', err)
+      console.error('Microphone access error:', err)
+      setIsRecording(false)
     }
   }
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
+    // Check the recorder's actual state, not React state, to avoid stale closure
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop()
     }
   }
