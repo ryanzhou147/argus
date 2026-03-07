@@ -169,6 +169,15 @@ export default function GlobeView() {
     }
   }, [setSelectedEventId, stopAutoSpin])
 
+  // Reduce spin momentum — default dampingFactor is ~0.1 (floaty); 0.4 stops much sooner
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const controls = globeRef.current?.controls()
+      if (controls) controls.dampingFactor = 0.4
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [])
+
   // Cancel any pending rAF on unmount
   useEffect(() => {
     return () => {
