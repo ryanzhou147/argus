@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS content_table (
     body            TEXT,
     url             TEXT UNIQUE NOT NULL,
     published_at    TIMESTAMPTZ,
+    image_url       TEXT,
     latitude        FLOAT,
     longitude       FLOAT,
     engagement_id   UUID REFERENCES engagement(id) ON DELETE SET NULL,
