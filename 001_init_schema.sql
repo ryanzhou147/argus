@@ -39,21 +39,23 @@ CREATE TABLE IF NOT EXISTS sources (
 -- content_table
 -- ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS content_table (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    source_id       INT REFERENCES sources(id) ON DELETE SET NULL,
-    title           TEXT,
-    body            TEXT,
-    url             TEXT UNIQUE NOT NULL,
-    published_at    TIMESTAMPTZ,
-    image_url       TEXT,
-    latitude        FLOAT,
-    longitude       FLOAT,
-    engagement_id   UUID REFERENCES engagement(id) ON DELETE SET NULL,
-    event_type      TEXT,
-    embedding       vector(1536),   -- OpenAI text-embedding-3-small dim
-    sentiment_score FLOAT,
-    market_signal   FLOAT,
-    created_at      TIMESTAMPTZ DEFAULT NOW()
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_id         INT REFERENCES sources(id) ON DELETE SET NULL,
+    title             TEXT,
+    body              TEXT,
+    url               TEXT UNIQUE NOT NULL,
+    published_at      TIMESTAMPTZ,
+    image_url         TEXT,           -- Cloudinary public_id after migration, else original URL
+    s3_url            TEXT,           -- original S3 URL (set after Cloudinary migration)
+    raw_metadata_json JSONB,
+    latitude          FLOAT,
+    longitude         FLOAT,
+    engagement_id     UUID REFERENCES engagement(id) ON DELETE SET NULL,
+    event_type        TEXT,
+    embedding         vector(1536),   -- OpenAI text-embedding-3-small dim
+    sentiment_score   FLOAT,
+    market_signal     FLOAT,
+    created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- ─────────────────────────────────────────────
