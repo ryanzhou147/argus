@@ -8,6 +8,7 @@ const ALL_TYPES: EventType[] = [
   'financial_markets',
   'climate_disasters',
   'policy_regulation',
+  'humanitarian_crisis',
 ]
 
 export default function FilterBar() {

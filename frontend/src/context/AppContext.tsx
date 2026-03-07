@@ -8,6 +8,7 @@ export const EVENT_TYPE_COLORS: Record<EventType, string> = {
   financial_markets: '#22c55e',
   climate_disasters: '#3b82f6',
   policy_regulation: '#a855f7',
+  humanitarian_crisis: '#ec4899',
 }
 
 export const EVENT_TYPE_LABELS: Record<EventType, string> = {
@@ -17,6 +18,7 @@ export const EVENT_TYPE_LABELS: Record<EventType, string> = {
   financial_markets: 'Financial Markets',
   climate_disasters: 'Climate & Disasters',
   policy_regulation: 'Policy & Regulation',
+  humanitarian_crisis: 'Humanitarian Crisis',
 }
 
 const ALL_TYPES: EventType[] = [
@@ -26,6 +28,7 @@ const ALL_TYPES: EventType[] = [
   'financial_markets',
   'climate_disasters',
   'policy_regulation',
+  'humanitarian_crisis',
 ]
 
 interface AppContextValue {

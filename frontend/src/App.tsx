@@ -45,6 +45,7 @@ export default function App() {
         const KNOWN_TYPES: EventType[] = [
           'geopolitics', 'trade_supply_chain', 'energy_commodities',
           'financial_markets', 'climate_disasters', 'policy_regulation',
+          'humanitarian_crisis',
         ]
 
         const mappedEvents: Event[] = data.points.map(p => ({

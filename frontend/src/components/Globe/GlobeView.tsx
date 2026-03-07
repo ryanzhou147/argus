@@ -40,18 +40,21 @@ export default function GlobeView() {
     }
   }, [])
 
-  // Compute visible events based on timeline + filters
-  const visibleEvents = useMemo<Event[]>(() => {
-    return events.filter(evt => {
-      if (!activeFilters.has(evt.event_type)) return false
-      if (timelinePosition && new Date(evt.start_time) > timelinePosition) return false
-      return true
-    })
+  // Compute visible event IDs based on timeline + filters
+  const visibleIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const evt of events) {
+      if (!activeFilters.has(evt.event_type)) continue
+      if (timelinePosition && new Date(evt.start_time) > timelinePosition) continue
+      ids.add(evt.id)
+    }
+    return ids
   }, [events, timelinePosition, activeFilters])
 
-  // Build point data for react-globe.gl
-  const points = useMemo<GlobePoint[]>(() => {
-    return visibleEvents.map(evt => {
+  // All points — never filtered out, so pointsData is stable and react-globe.gl
+  // never re-animates on filter change. Visibility is controlled via pointRadius/pointColor.
+  const allPoints = useMemo<GlobePoint[]>(() => {
+    return events.map(evt => {
       const baseColor = EVENT_TYPE_COLORS[evt.event_type] ?? '#888888'
       return {
         id: evt.id,
@@ -64,10 +67,7 @@ export default function GlobeView() {
         isPulsing: false,
       }
     })
-  }, [visibleEvents])
-
-  // Build visible arc IDs
-  const visibleIds = useMemo(() => new Set(visibleEvents.map(e => e.id)), [visibleEvents])
+  }, [events])
 
   // Build highlighted arc pairs from agent context
   const highlightedArcKeys = useMemo(() => {
@@ -94,6 +94,13 @@ export default function GlobeView() {
     }
   }, [setSelectedEventId, stopAutoSpin])
 
+  // Cancel any pending rAF on unmount
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+    }
+  }, [])
+
   // Auto-rotate globe based on isAutoSpinning state
   useEffect(() => {
     const globe = globeRef.current
@@ -119,11 +126,19 @@ export default function GlobeView() {
         globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
         backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
         // Points
-        pointsData={points}
+        pointsData={allPoints}
         pointLat="lat"
         pointLng="lng"
-        pointColor="color"
-        pointRadius={(d: object) => Math.max((d as GlobePoint).size * (altRef.current / 2.5), 0.12)}
+        pointColor={(d: object) => {
+          const p = d as GlobePoint
+          return visibleIds.has(p.id) ? p.color : 'rgba(0,0,0,0)'
+        }}
+        pointRadius={(d: object) => {
+          const p = d as GlobePoint
+          if (!visibleIds.has(p.id)) return 0
+          return Math.max(p.size * (altRef.current / 2.5), 0.1)
+        }}
+        pointResolution={6}
         pointAltitude={0.015}
         pointLabel="label"
         onPointClick={handlePointClick}
