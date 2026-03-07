@@ -30,7 +30,6 @@ export default function TimelineSlider() {
   const startPlay = useCallback(() => {
     if (isPlaying) return
     setIsPlaying(true)
-    // Reset to start if at end
     if (currentValue >= maxTime) {
       setTimelinePosition(new Date(minTime))
     }
@@ -46,7 +45,7 @@ export default function TimelineSlider() {
 
   useEffect(() => {
     if (!isPlaying) return
-    const stepMs = range / 120 // advance in 120 steps
+    const stepMs = range / 120
     intervalRef.current = setInterval(() => {
       setTimelinePosition(prev => {
         const next = (prev ? prev.getTime() : minTime) + stepMs
@@ -67,43 +66,55 @@ export default function TimelineSlider() {
   const pct = ((currentValue - minTime) / range) * 100
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-20 px-6 pb-4 pt-3" style={{ background: 'linear-gradient(to top, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0.85) 70%, transparent 100%)' }}>
+    <div
+      className="absolute bottom-0 left-0 right-0 z-20 px-6 pb-4 pt-3"
+      style={{ background: 'linear-gradient(to top, rgba(8,8,8,0.97) 0%, rgba(8,8,8,0.85) 70%, transparent 100%)' }}
+    >
       {/* Date labels */}
-      <div className="flex justify-between text-xs text-slate-400 mb-2 px-1">
+      <div className="flex justify-between text-xs mb-2 px-1" style={{ color: 'var(--text-muted)' }}>
         <span>{formatDate(new Date(minTime))}</span>
         {timelinePosition && (
-          <span className="text-blue-400 font-medium">{formatDate(timelinePosition)}</span>
+          <span style={{ color: 'var(--text-secondary)' }}>{formatDate(timelinePosition)}</span>
         )}
         <span>{formatDate(new Date(maxTime))}</span>
       </div>
 
       {/* Controls row */}
       <div className="flex items-center gap-3">
-        {/* Play/Pause button */}
+        {/* Play/Pause button — square */}
         <button
           onClick={isPlaying ? stopPlay : startPlay}
-          className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-600 hover:bg-blue-500 flex items-center justify-center transition-colors"
+          className="flex-shrink-0 w-8 h-8 flex items-center justify-center transition-colors"
+          style={{
+            background: 'var(--bg-raised)',
+            border: '1px solid var(--border-strong)',
+            color: 'var(--text-primary)',
+          }}
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
           {isPlaying ? (
-            <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
               <rect x="5" y="4" width="3" height="12"/>
               <rect x="12" y="4" width="3" height="12"/>
             </svg>
           ) : (
-            <svg className="w-4 h-4 text-white ml-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M6 4l12 6-12 6z"/>
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z"/>
             </svg>
           )}
         </button>
 
         {/* Slider */}
         <div className="relative flex-1">
-          {/* Progress track */}
-          <div className="absolute top-1/2 left-0 h-1 rounded-full bg-slate-700 -translate-y-1/2 w-full pointer-events-none" />
+          {/* Track background */}
           <div
-            className="absolute top-1/2 left-0 h-1 rounded-full bg-blue-500 -translate-y-1/2 pointer-events-none"
-            style={{ width: `${pct}%` }}
+            className="absolute top-1/2 left-0 h-px w-full pointer-events-none -translate-y-1/2"
+            style={{ background: 'var(--border-strong)' }}
+          />
+          {/* Progress fill */}
+          <div
+            className="absolute top-1/2 left-0 h-px pointer-events-none -translate-y-1/2"
+            style={{ width: `${pct}%`, background: 'var(--text-secondary)' }}
           />
           <input
             type="range"
@@ -112,9 +123,7 @@ export default function TimelineSlider() {
             value={currentValue}
             onChange={handleSliderChange}
             className="relative w-full h-4 appearance-none bg-transparent cursor-pointer"
-            style={{
-              WebkitAppearance: 'none',
-            }}
+            style={{ WebkitAppearance: 'none' }}
           />
         </div>
       </div>
@@ -123,22 +132,20 @@ export default function TimelineSlider() {
         input[type='range']::-webkit-slider-thumb {
           -webkit-appearance: none;
           appearance: none;
-          width: 16px;
+          width: 10px;
           height: 16px;
-          border-radius: 50%;
-          background: #3b82f6;
-          border: 2px solid #fff;
+          border-radius: 0;
+          background: #c0c0c0;
+          border: 1px solid #444444;
           cursor: pointer;
-          box-shadow: 0 0 0 2px rgba(59,130,246,0.4);
         }
         input[type='range']::-moz-range-thumb {
-          width: 16px;
+          width: 10px;
           height: 16px;
-          border-radius: 50%;
-          background: #3b82f6;
-          border: 2px solid #fff;
+          border-radius: 0;
+          background: #c0c0c0;
+          border: 1px solid #444444;
           cursor: pointer;
-          box-shadow: 0 0 0 2px rgba(59,130,246,0.4);
         }
       `}</style>
     </div>
