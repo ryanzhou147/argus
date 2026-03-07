@@ -164,14 +164,18 @@ class MockEventRepository(EventRepository):
         # Related events
         base["related_events"] = self.get_related_events(event_id)
 
-        # Engagement
+        # Engagement (matches SQL engagement table: reddit_*, poly_*, twitter_*)
         eng = self._engagements.get(event_id)
         if eng:
             base["engagement"] = {
                 "reddit_upvotes": eng["reddit_upvotes"],
                 "reddit_comments": eng["reddit_comments"],
-                "poly_volume": eng["poly_volume"],
+                "poly_volume": float(eng["poly_volume"]),
                 "poly_comments": eng["poly_comments"],
+                "twitter_likes": eng.get("twitter_likes"),
+                "twitter_views": eng.get("twitter_views"),
+                "twitter_comments": eng.get("twitter_comments"),
+                "twitter_reposts": eng.get("twitter_reposts"),
             }
         else:
             base["engagement"] = None
