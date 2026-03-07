@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450" viewBox="0 0 800 450">
+  <rect width="800" height="450" fill="#0f172a"/>
+  <rect x="0" y="0" width="800" height="450" fill="url(#grad)"/>
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e293b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f172a;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Globe outline -->
+  <circle cx="400" cy="225" r="140" fill="none" stroke="#334155" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <ellipse cx="400" cy="225" rx="140" ry="50" fill="none" stroke="#334155" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="260" y1="225" x2="540" y2="225" stroke="#334155" stroke-width="1" stroke-dasharray="3 3"/>
+  <!-- Pulse rings -->
+  <circle cx="400" cy="225" r="160" fill="none" stroke="#3b82f6" stroke-width="0.5" opacity="0.3"/>
+  <circle cx="400" cy="225" r="180" fill="none" stroke="#3b82f6" stroke-width="0.5" opacity="0.15"/>
+  <!-- Center dot -->
+  <circle cx="400" cy="225" r="6" fill="#3b82f6" opacity="0.8"/>
+  <circle cx="400" cy="225" r="3" fill="#60a5fa"/>
+  <!-- Label -->
+  <text x="400" y="400" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#64748b">No image available</text>
+</svg>
