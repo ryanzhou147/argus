@@ -10,17 +10,33 @@ frontend/.env
 frontend/.env.*
 !frontend/.env.example
 
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Virtual environments (any subfolder named env/venv/.venv)
+**/env/
+**/.venv/
+**/venv/
+**/ENV/
+
 # Backend
-backend/__pycache__/
-backend/*.py[cod]
-backend/*$py.class
 backend/.env
 backend/.env.*
 !backend/.env.example
-backend/.venv/
-backend/venv/
-backend/env/
-backend/ENV/
+
+# Reddit Scraper
+Reddit Scraper/.env
+Reddit Scraper/.env.*
+!Reddit Scraper/.env.example
+
+# Natural disasters scraper
+natural-disasters/*.db
+natural-disasters/*.db-shm
+natural-disasters/*.db-wal
+natural-disasters/.env
 
 # IDEs and Editors
 .idea/
@@ -36,3 +52,5 @@ backend/ENV/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+*.json
