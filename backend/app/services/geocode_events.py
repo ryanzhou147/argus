@@ -16,10 +16,11 @@ Schema (from 001_init_schema.sql):
   content_table.longitude  FLOAT
 
 Usage:
-    python -m backend.app.services.geocode_events
-    python -m backend.app.services.geocode_events --dry-run
-    python -m backend.app.services.geocode_events --table events
-    python -m backend.app.services.geocode_events --table content_table
+    python -m app.services.geocode_events
+    python -m app.services.geocode_events --workers 10
+    python -m app.services.geocode_events --dry-run
+    python -m app.services.geocode_events --table events --workers 5
+    python -m app.services.geocode_events --table content_table --workers 20
 """
 
 from __future__ import annotations
@@ -29,7 +30,9 @@ import json
 import logging
 import os
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator
@@ -47,7 +50,7 @@ load_dotenv(_ENV_PATH)
 CHUTES_URL = "https://llm.chutes.ai/v1/chat/completions"
 CHUTES_MODEL = "default"
 
-RETRY_DELAY = 2      # seconds between Chutes retries
+RETRY_DELAY = 2       # seconds between Chutes retries
 MAX_RETRIES = 3
 REQUEST_TIMEOUT = 45  # seconds
 
@@ -60,6 +63,7 @@ log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Database connection (psycopg2 → AWS PostgreSQL)
+# Each worker opens its own connection — psycopg2 connections are not thread-safe.
 # ---------------------------------------------------------------------------
 
 try:
@@ -72,7 +76,6 @@ except ImportError as exc:  # pragma: no cover
 
 
 def _build_dsn() -> str:
-    """Build a DSN from individual PG_* env vars or fall back to DATABASE_URL."""
     database_url = os.environ.get("DATABASE_URL")
     if database_url:
         return database_url
@@ -83,13 +86,15 @@ def _build_dsn() -> str:
     dbname = os.environ.get("PG_DB", "postgres")
     if not (host and user and password):
         raise ValueError(
-            "Database credentials missing. Set DATABASE_URL or PG_HOST / PG_USER / PG_PASSWORD in .env"
+            "Database credentials missing. Set DATABASE_URL or "
+            "PG_HOST / PG_USER / PG_PASSWORD in .env"
         )
     return f"postgresql://{user}:{password}@{host}:{port}/{dbname}"
 
 
 @contextmanager
 def get_cursor() -> Generator:
+    """Open a short-lived connection and yield a RealDictCursor."""
     dsn = _build_dsn()
     conn = psycopg2.connect(dsn)
     try:
@@ -115,14 +120,12 @@ def _load_api_key() -> str:
 
 
 def _strip_think_tags(text: str) -> str:
-    """Remove <think>...</think> blocks from model output."""
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
     return text.strip()
 
 
 def _call_chutes(api_key: str, prompt: str) -> str:
-    """Call Chutes chat completions and return the raw assistant text."""
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             resp = requests.post(
@@ -152,9 +155,6 @@ def geocode_via_ai(api_key: str, context: dict) -> tuple[float, float] | None:
     """
     Ask Chutes to infer (latitude, longitude) from event context fields.
     Returns (lat, lon) floats or None if inference fails.
-
-    context keys used (all optional, any can be None/empty):
-        title, summary, canada_impact_summary, event_type, start_time
     """
     title = context.get("title") or ""
     summary = context.get("summary") or ""
@@ -163,7 +163,6 @@ def geocode_via_ai(api_key: str, context: dict) -> tuple[float, float] | None:
     start_time = context.get("start_time") or ""
     body = context.get("body") or ""
 
-    # Build a concise context block — include only non-empty fields
     lines = []
     if title:
         lines.append(f"Title: {title}")
@@ -183,7 +182,6 @@ def geocode_via_ai(api_key: str, context: dict) -> tuple[float, float] | None:
         return None
 
     context_block = "\n".join(lines)
-
     prompt = (
         "You are a geocoding assistant. Based ONLY on the event information below, "
         "determine the most likely primary geographic location (the main place where "
@@ -202,7 +200,7 @@ def geocode_via_ai(api_key: str, context: dict) -> tuple[float, float] | None:
             log.warning("Chutes returned empty response after stripping think tags")
             return None
 
-        # --- Attempt 1: well-formed JSON object ---
+        # Attempt 1: well-formed JSON object
         match = re.search(r'\{[^{}]*"latitude"[^{}]*"longitude"[^{}]*\}', raw)
         if not match:
             match = re.search(r'\{[^{}]*"longitude"[^{}]*"latitude"[^{}]*\}', raw)
@@ -214,9 +212,9 @@ def geocode_via_ai(api_key: str, context: dict) -> tuple[float, float] | None:
                 if -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0:
                     return lat, lon
             except (json.JSONDecodeError, KeyError, ValueError):
-                pass  # fall through to next attempt
+                pass
 
-        # --- Attempt 2: extract floats next to "latitude" / "longitude" keys ---
+        # Attempt 2: extract floats directly after "latitude" / "longitude" keys
         lat_match = re.search(r'"latitude"\s*:\s*(-?\d+(?:\.\d+)?)', raw)
         lon_match = re.search(r'"longitude"\s*:\s*(-?\d+(?:\.\d+)?)', raw)
         if lat_match and lon_match:
@@ -233,123 +231,186 @@ def geocode_via_ai(api_key: str, context: dict) -> tuple[float, float] | None:
 
 
 # ---------------------------------------------------------------------------
-# events table
+# Thread-safe stats counter
 # ---------------------------------------------------------------------------
 
-def fetch_events_missing_coords(cur) -> list[dict]:
-    """Return all events rows where primary_latitude or primary_longitude is NULL."""
-    cur.execute(
-        """
-        SELECT id, title, summary, event_type, canada_impact_summary, start_time
-        FROM events
-        WHERE primary_latitude IS NULL AND primary_longitude IS NULL
-        ORDER BY start_time DESC NULLS LAST
-        """
-    )
-    return [dict(row) for row in cur.fetchall()]
+class _Stats:
+    def __init__(self, total: int) -> None:
+        self.total = total
+        self.updated = 0
+        self.failed = 0
+        self.skipped = 0
+        self._lock = threading.Lock()
+        self._done = 0
+
+    def record(self, outcome: str) -> int:
+        """Increment outcome counter and return current done count."""
+        with self._lock:
+            self._done += 1
+            if outcome == "updated":
+                self.updated += 1
+            elif outcome == "failed":
+                self.failed += 1
+            elif outcome == "skipped":
+                self.skipped += 1
+            return self._done
+
+    def as_dict(self) -> dict:
+        return {
+            "total": self.total,
+            "updated": self.updated,
+            "skipped": self.skipped,
+            "failed": self.failed,
+        }
 
 
-def update_event_coords(cur, event_id: str, lat: float, lon: float) -> None:
-    cur.execute(
-        """
-        UPDATE events
-        SET primary_latitude = %s, primary_longitude = %s
-        WHERE id = %s
-        """,
-        (lat, lon, event_id),
-    )
+# ---------------------------------------------------------------------------
+# Per-row worker functions (each opens its own DB connection)
+# ---------------------------------------------------------------------------
 
+def _process_event_row(row: dict, api_key: str, dry_run: bool) -> str:
+    """Geocode one events row and write result. Returns outcome string."""
+    row_id = str(row["id"])
+    log.info("Geocoding event %s — %s", row_id, (row.get("title") or "")[:80])
 
-def process_events_table(api_key: str, dry_run: bool = False) -> dict:
-    stats = {"total": 0, "updated": 0, "skipped": 0, "failed": 0}
+    coords = geocode_via_ai(api_key, row)
+    if coords is None:
+        log.warning("  -> Could not geocode event %s, skipping", row_id)
+        return "failed"
+
+    lat, lon = coords
+    log.info("  -> [event] lat=%.4f  lon=%.4f  (%s)", lat, lon, row_id)
+
+    if dry_run:
+        log.info("  [dry-run] would update event %s", row_id)
+        return "skipped"
 
     with get_cursor() as cur:
-        rows = fetch_events_missing_coords(cur)
-        stats["total"] = len(rows)
-        log.info("events: %d rows missing coordinates", len(rows))
-
-        for row in rows:
-            row_id = str(row["id"])
-            log.info("Geocoding event %s — %s", row_id, row.get("title", "")[:80])
-            coords = geocode_via_ai(api_key, row)
-            if coords is None:
-                log.warning("  -> Could not geocode event %s, skipping", row_id)
-                stats["failed"] += 1
-                continue
-            lat, lon = coords
-            log.info("  -> lat=%.4f  lon=%.4f", lat, lon)
-            if not dry_run:
-                update_event_coords(cur, row_id, lat, lon)
-                stats["updated"] += 1
-            else:
-                log.info("  [dry-run] would update event %s", row_id)
-                stats["skipped"] += 1
-
-    return stats
+        cur.execute(
+            """
+            UPDATE events
+            SET primary_latitude = %s, primary_longitude = %s
+            WHERE id = %s
+              AND primary_latitude IS NULL
+              AND primary_longitude IS NULL
+            """,
+            (lat, lon, row_id),
+        )
+    return "updated"
 
 
-# ---------------------------------------------------------------------------
-# content_table
-# ---------------------------------------------------------------------------
+def _process_content_row(row: dict, api_key: str, dry_run: bool) -> str:
+    """Geocode one content_table row and write result. Returns outcome string."""
+    row_id = str(row["id"])
+    log.info("Geocoding content %s — %s", row_id, (row.get("title") or "")[:80])
 
-def fetch_content_missing_coords(cur) -> list[dict]:
-    """Return all content_table rows where latitude or longitude is NULL."""
-    cur.execute(
-        """
-        SELECT id, title, body, event_type, published_at
-        FROM content_table
-        WHERE latitude IS NULL AND longitude IS NULL
-        ORDER BY published_at DESC NULLS LAST
-        """
-    )
-    return [dict(row) for row in cur.fetchall()]
+    context = {
+        "title": row.get("title"),
+        "summary": row.get("body"),
+        "body": row.get("body"),
+        "event_type": row.get("event_type"),
+        "start_time": row.get("published_at"),
+    }
+    coords = geocode_via_ai(api_key, context)
+    if coords is None:
+        log.warning("  -> Could not geocode content %s, skipping", row_id)
+        return "failed"
 
+    lat, lon = coords
+    log.info("  -> [content] lat=%.4f  lon=%.4f  (%s)", lat, lon, row_id)
 
-def update_content_coords(cur, content_id: str, lat: float, lon: float) -> None:
-    cur.execute(
-        """
-        UPDATE content_table
-        SET latitude = %s, longitude = %s
-        WHERE id = %s
-        """,
-        (lat, lon, content_id),
-    )
-
-
-def process_content_table(api_key: str, dry_run: bool = False) -> dict:
-    stats = {"total": 0, "updated": 0, "skipped": 0, "failed": 0}
+    if dry_run:
+        log.info("  [dry-run] would update content %s", row_id)
+        return "skipped"
 
     with get_cursor() as cur:
-        rows = fetch_content_missing_coords(cur)
-        stats["total"] = len(rows)
-        log.info("content_table: %d rows missing coordinates", len(rows))
+        cur.execute(
+            """
+            UPDATE content_table
+            SET latitude = %s, longitude = %s
+            WHERE id = %s
+              AND latitude IS NULL
+              AND longitude IS NULL
+            """,
+            (lat, lon, row_id),
+        )
+    return "updated"
 
-        for row in rows:
-            row_id = str(row["id"])
-            log.info("Geocoding content %s — %s", row_id, row.get("title", "")[:80])
-            # Map content_table columns to the geocode_via_ai context keys
-            context = {
-                "title": row.get("title"),
-                "summary": row.get("body"),
-                "body": row.get("body"),
-                "event_type": row.get("event_type"),
-                "start_time": row.get("published_at"),
-            }
-            coords = geocode_via_ai(api_key, context)
-            if coords is None:
-                log.warning("  -> Could not geocode content %s, skipping", row_id)
-                stats["failed"] += 1
-                continue
-            lat, lon = coords
-            log.info("  -> lat=%.4f  lon=%.4f", lat, lon)
-            if not dry_run:
-                update_content_coords(cur, row_id, lat, lon)
-                stats["updated"] += 1
-            else:
-                log.info("  [dry-run] would update content %s", row_id)
-                stats["skipped"] += 1
 
-    return stats
+# ---------------------------------------------------------------------------
+# Orchestrators
+# ---------------------------------------------------------------------------
+
+def process_events_table(api_key: str, dry_run: bool = False, workers: int = 1) -> dict:
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, title, summary, event_type, canada_impact_summary, start_time
+            FROM events
+            WHERE primary_latitude IS NULL AND primary_longitude IS NULL
+            ORDER BY start_time DESC NULLS LAST
+            """
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+
+    stats = _Stats(len(rows))
+    log.info("events: %d rows missing coordinates — using %d worker(s)", len(rows), workers)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_process_event_row, row, api_key, dry_run): row
+            for row in rows
+        }
+        for future in as_completed(futures):
+            try:
+                outcome = future.result()
+            except Exception as exc:
+                log.error("Worker exception: %s", exc)
+                outcome = "failed"
+            done = stats.record(outcome)
+            if done % 50 == 0 or done == stats.total:
+                log.info(
+                    "events progress: %d/%d  updated=%d failed=%d skipped=%d",
+                    done, stats.total, stats.updated, stats.failed, stats.skipped,
+                )
+
+    return stats.as_dict()
+
+
+def process_content_table(api_key: str, dry_run: bool = False, workers: int = 1) -> dict:
+    with get_cursor() as cur:
+        cur.execute(
+            """
+            SELECT id, title, body, event_type, published_at
+            FROM content_table
+            WHERE latitude IS NULL AND longitude IS NULL
+            ORDER BY published_at DESC NULLS LAST
+            """
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+
+    stats = _Stats(len(rows))
+    log.info("content_table: %d rows missing coordinates — using %d worker(s)", len(rows), workers)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_process_content_row, row, api_key, dry_run): row
+            for row in rows
+        }
+        for future in as_completed(futures):
+            try:
+                outcome = future.result()
+            except Exception as exc:
+                log.error("Worker exception: %s", exc)
+                outcome = "failed"
+            done = stats.record(outcome)
+            if done % 50 == 0 or done == stats.total:
+                log.info(
+                    "content_table progress: %d/%d  updated=%d failed=%d skipped=%d",
+                    done, stats.total, stats.updated, stats.failed, stats.skipped,
+                )
+
+    return stats.as_dict()
 
 
 # ---------------------------------------------------------------------------
@@ -367,25 +428,34 @@ def main() -> None:
         help="Which table to process (default: both)",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=5,
+        help="Number of parallel workers (default: 5)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print what would be updated without writing to the database",
     )
     args = parser.parse_args()
 
+    if args.workers < 1:
+        parser.error("--workers must be at least 1")
+
     api_key = _load_api_key()
 
     if args.table in ("events", "both"):
-        stats = process_events_table(api_key, dry_run=args.dry_run)
+        stats = process_events_table(api_key, dry_run=args.dry_run, workers=args.workers)
         log.info(
-            "events table — total=%d updated=%d skipped=%d failed=%d",
+            "events table done — total=%d updated=%d skipped=%d failed=%d",
             stats["total"], stats["updated"], stats["skipped"], stats["failed"],
         )
 
     if args.table in ("content_table", "both"):
-        stats = process_content_table(api_key, dry_run=args.dry_run)
+        stats = process_content_table(api_key, dry_run=args.dry_run, workers=args.workers)
         log.info(
-            "content_table — total=%d updated=%d skipped=%d failed=%d",
+            "content_table done — total=%d updated=%d skipped=%d failed=%d",
             stats["total"], stats["updated"], stats["skipped"], stats["failed"],
         )
 
