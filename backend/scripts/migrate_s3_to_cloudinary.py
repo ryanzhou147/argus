@@ -133,12 +133,16 @@ def main() -> None:
         api_secret=os.environ["CLOUDINARY_API_SECRET"],
     )
 
-    # S3
+    # S3 — endpoint_url forces boto3 to use the regional endpoint so that
+    # presigned URLs are signed and served from the same region (us-east-2).
+    # Without this, boto3 falls back to the global endpoint (s3.amazonaws.com)
+    # while still signing for us-east-2, causing a SigV4 mismatch.
     bucket = os.environ["S3_BUCKET"]
-    region = os.environ.get("AWS_REGION", "ca-central-1")
+    region = os.environ.get("AWS_REGION", "us-east-2")
     s3 = boto3.client(
         "s3",
         region_name=region,
+        endpoint_url=f"https://s3.{region}.amazonaws.com",
         aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
         aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
     )
