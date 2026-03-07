@@ -50,6 +50,10 @@ export interface EngagementSnapshot {
   reddit_comments: number
   poly_volume: number
   poly_comments: number
+  twitter_likes: number
+  twitter_views: number
+  twitter_comments: number
+  twitter_reposts: number
 }
 
 export interface EventDetail extends Event {

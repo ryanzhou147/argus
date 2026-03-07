@@ -6,11 +6,24 @@ import type {
   RelatedEventsResponse,
   TimelineResponse,
 } from '../types/events'
+import type { AgentResponse } from '../types/agent'
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+const BASE_URL = import.meta.env.VITE_API_URL ?? '/api'
 
 async function fetchJson<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`)
+  if (!res.ok) {
+    throw new Error(`API error ${res.status}: ${await res.text()}`)
+  }
+  return res.json() as Promise<T>
+}
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
   if (!res.ok) {
     throw new Error(`API error ${res.status}: ${await res.text()}`)
   }
@@ -44,4 +57,8 @@ export function getFilters(): Promise<FilterResponse> {
 
 export function getTimeline(): Promise<TimelineResponse> {
   return fetchJson<TimelineResponse>('/timeline')
+}
+
+export function postAgentQuery(query: string): Promise<AgentResponse> {
+  return postJson<AgentResponse>('/agent/query', { query })
 }
