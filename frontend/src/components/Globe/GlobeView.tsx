@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, useCallback } from 'react'
+import { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import Globe from 'react-globe.gl'
 import type { Event } from '../../types/events'
 import { useAppContext, EVENT_TYPE_COLORS, type ArcData } from '../../context/AppContext'
@@ -19,7 +19,26 @@ interface GlobePoint {
 export default function GlobeView() {
   const globeRef = useRef<any>(null)
   const { events, timelinePosition, activeFilters, setSelectedEventId, arcs, isAutoSpinning, stopAutoSpin } = useAppContext()
-  const { activePulseIds, activeHighlights } = useAgentContext()
+  const { activeHighlights } = useAgentContext()
+
+  // Track camera altitude via ref so the points array never recalculates on zoom.
+  // A rAF-throttled tick triggers re-renders so the pointRadius accessor picks up
+  // the new altitude without rebuilding or rememoising the points array.
+  const altRef = useRef(2.5)
+  const rafRef = useRef<number | null>(null)
+  const [, setAltitudeTick] = useState(0)
+
+  const handleZoom = useCallback(({ altitude }: { altitude: number }) => {
+    // onZoom fires during rotation/inertia too — skip if altitude didn't actually change
+    if (Math.abs(altitude - altRef.current) < 0.01) return
+    altRef.current = altitude
+    if (rafRef.current === null) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null
+        setAltitudeTick(t => t + 1)
+      })
+    }
+  }, [])
 
   // Compute visible events based on timeline + filters
   const visibleEvents = useMemo<Event[]>(() => {
@@ -31,25 +50,21 @@ export default function GlobeView() {
   }, [events, timelinePosition, activeFilters])
 
   // Build point data for react-globe.gl
-  const pulseSet = useMemo(() => new Set(activePulseIds), [activePulseIds])
-
   const points = useMemo<GlobePoint[]>(() => {
     return visibleEvents.map(evt => {
-      const isPulsing = pulseSet.has(evt.id)
-      const baseColor = EVENT_TYPE_COLORS[evt.event_type]
-      const color = isPulsing ? '#ffffff' : baseColor
+      const baseColor = EVENT_TYPE_COLORS[evt.event_type] ?? '#888888'
       return {
         id: evt.id,
         lat: evt.primary_latitude,
         lng: evt.primary_longitude,
-        color,
-        size: isPulsing ? (0.5 + evt.confidence_score * 0.4) * 1.8 : 0.5 + evt.confidence_score * 0.4,
+        color: baseColor,
+        size: 0.2,
         label: `<div style="background:rgba(15,23,42,0.9);color:white;padding:8px 12px;border-radius:6px;font-size:12px;max-width:200px;border:1px solid ${baseColor}"><strong>${evt.title}</strong><br/><span style="color:${baseColor};font-size:11px">${evt.event_type.replace(/_/g, ' ')}</span></div>`,
         event: evt,
-        isPulsing,
+        isPulsing: false,
       }
     })
-  }, [visibleEvents, pulseSet])
+  }, [visibleEvents])
 
   // Build visible arc IDs
   const visibleIds = useMemo(() => new Set(visibleEvents.map(e => e.id)), [visibleEvents])
@@ -108,10 +123,11 @@ export default function GlobeView() {
         pointLat="lat"
         pointLng="lng"
         pointColor="color"
-        pointRadius="size"
+        pointRadius={(d: object) => Math.max((d as GlobePoint).size * (altRef.current / 2.5), 0.12)}
         pointAltitude={0.015}
         pointLabel="label"
         onPointClick={handlePointClick}
+        onZoom={handleZoom}
         // Arcs
         arcsData={visibleArcs}
         arcStartLat="startLat"
