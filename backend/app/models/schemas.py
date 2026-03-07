@@ -37,6 +37,7 @@ class ContentItem(BaseModel):
     image_url: Optional[str] = None
 
 
+
 class Entity(BaseModel):
     id: str
     name: str

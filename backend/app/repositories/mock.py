@@ -164,7 +164,7 @@ class MockEventRepository(EventRepository):
         # Related events
         base["related_events"] = self.get_related_events(event_id)
 
-        # Engagement (matches SQL engagement table: reddit_*, poly_*, twitter_*)
+        # Engagement
         eng = self._engagements.get(event_id)
         if eng:
             base["engagement"] = {
