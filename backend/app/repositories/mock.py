@@ -186,7 +186,7 @@ class MockEventRepository(EventRepository):
             base["engagement"] = {
                 "reddit_upvotes": eng["reddit_upvotes"],
                 "reddit_comments": eng["reddit_comments"],
-                "poly_volume": eng["poly_volume"],
+                "poly_volume": float(eng["poly_volume"]),
                 "poly_comments": eng["poly_comments"],
                 "twitter_likes": eng.get("twitter_likes", 0),
                 "twitter_views": eng.get("twitter_views", 0),

@@ -19,6 +19,7 @@ app.add_middleware(
 
 app.include_router(events.router)
 app.include_router(filters.router)
+app.include_router(market_signals.router)
 app.include_router(timeline.router)
 app.include_router(agent.router)
 
