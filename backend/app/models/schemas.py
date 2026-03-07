@@ -31,7 +31,11 @@ class ContentItem(BaseModel):
     longitude: float
     event_type: EventType
     sentiment_score: Optional[float] = None
+    # SQL content_table has market_signal FLOAT; we use str for categorical labels (e.g. "freight_spike").
+    # Consider changing SQL to TEXT if storing labels; or store numeric and map in app.
     market_signal: Optional[str] = None
+    image_url: Optional[str] = None
+
 
 
 class Entity(BaseModel):
@@ -53,6 +57,7 @@ class EventRelationship(BaseModel):
     event_b_id: str
     relationship_type: RelationshipType
     relationship_score: float
+    # SQL event_relationships.reason_codes is TEXT[]; join to str when reading from DB
     reason_codes: str
 
 
@@ -61,8 +66,12 @@ class Engagement(BaseModel):
     event_id: str
     reddit_upvotes: int
     reddit_comments: int
-    poly_volume: int
+    poly_volume: float  # SQL: FLOAT
     poly_comments: int
+    twitter_likes: Optional[int] = None
+    twitter_views: Optional[int] = None
+    twitter_comments: Optional[int] = None
+    twitter_reposts: Optional[int] = None
 
 
 # ------------------------------------------------------------------
@@ -72,8 +81,12 @@ class Engagement(BaseModel):
 class EngagementSnapshot(BaseModel):
     reddit_upvotes: int
     reddit_comments: int
-    poly_volume: int
+    poly_volume: float  # SQL engagement.poly_volume is FLOAT
     poly_comments: int
+    twitter_likes: Optional[int] = None
+    twitter_views: Optional[int] = None
+    twitter_comments: Optional[int] = None
+    twitter_reposts: Optional[int] = None
 
 
 class SourceCard(BaseModel):
@@ -137,3 +150,27 @@ class TimelineResponse(BaseModel):
 
 class RelatedEventsResponse(BaseModel):
     related_events: List[RelatedEvent]
+
+
+# ------------------------------------------------------------------
+# Market signals (from Polymarket / Kalshi scrapers)
+# ------------------------------------------------------------------
+
+class MarketSignalEngagement(BaseModel):
+    poly_volume: float
+    poly_comments: Optional[int] = None
+
+
+class MarketSignal(BaseModel):
+    title: str
+    body: str
+    url: str
+    published_at: Optional[datetime] = None
+    engagement: MarketSignalEngagement
+    source: str  # "polymarket" | "kalshi"
+    error: Optional[bool] = None  # True if this source failed to fetch
+
+
+class MarketSignalsResponse(BaseModel):
+    signals: List[MarketSignal]
+    total: int
