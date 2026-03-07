@@ -41,7 +41,8 @@ async def run_backfill() -> dict:
     failed_rows = 0
     index_created = False
     status = "success"
-    offset = 0
+    exclude_ids: list[str] = []
+    batch_num = 0
 
     pool = None
     try:
@@ -49,13 +50,16 @@ async def run_backfill() -> dict:
 
         while True:
             async with pool.acquire() as conn:
-                batch = await fetch_batch(conn, BATCH_SIZE, offset)
+                batch = await fetch_batch(conn, BATCH_SIZE, exclude_ids or None)
 
             if not batch:
                 break
 
+            batch_num += 1
             fetched += len(batch)
-            offset += len(batch)
+            batch_embedded = 0
+            batch_skipped = 0
+            batch_failed = 0
 
             async with pool.acquire() as conn:
                 async with conn.transaction():
@@ -66,6 +70,8 @@ async def run_backfill() -> dict:
                         if text is None:
                             logger.info(f"Skipping row {row_id}: empty text")
                             empty_text_skipped += 1
+                            batch_skipped += 1
+                            exclude_ids.append(str(row_id))
                             continue
 
                         try:
@@ -75,9 +81,16 @@ async def run_backfill() -> dict:
                             await update_embedding(conn, row_id, embedding)
                             embedded += 1
                             overwritten += 1
+                            batch_embedded += 1
                         except Exception as e:
                             logger.error(f"Failed to embed row {row_id}: {e}")
                             failed_rows += 1
+                            batch_failed += 1
+
+            logger.info(
+                f"Batch {batch_num}: embedded {batch_embedded}, skipped {batch_skipped} empty, "
+                f"{batch_failed} failed | Total embedded: {embedded} / {fetched} fetched"
+            )
 
         # Attempt HNSW index creation
         async with pool.acquire() as conn:

@@ -5,12 +5,21 @@ import asyncpg
 logger = logging.getLogger(__name__)
 
 
-async def fetch_batch(conn: asyncpg.Connection, batch_size: int, offset: int) -> list[asyncpg.Record]:
-    """Fetch a batch of content_table rows ordered by id with OFFSET/LIMIT pagination."""
+async def fetch_batch(
+    conn: asyncpg.Connection,
+    batch_size: int,
+    exclude_ids: list[str] | None = None,
+) -> list[asyncpg.Record]:
+    """Fetch a batch of unembedded content_table rows, excluding specified IDs."""
+    if exclude_ids:
+        return await conn.fetch(
+            "SELECT id, title, body FROM content_table WHERE embedding IS NULL AND id != ALL($2::uuid[]) LIMIT $1",
+            batch_size,
+            exclude_ids,
+        )
     return await conn.fetch(
-        "SELECT id, title, body FROM content_table ORDER BY id LIMIT $1 OFFSET $2",
+        "SELECT id, title, body FROM content_table WHERE embedding IS NULL LIMIT $1",
         batch_size,
-        offset,
     )
 
 
