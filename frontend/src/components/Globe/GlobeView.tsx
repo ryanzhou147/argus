@@ -19,7 +19,7 @@ interface GlobePoint {
 
 export default function GlobeView() {
   const globeRef = useRef<any>(null)
-  const { events, timelinePosition, activeFilters, setSelectedEventId, arcs, isAutoSpinning, stopAutoSpin } = useAppContext()
+  const { events, timelinePosition, activeFilters, selectedEventId, setSelectedEventId, arcs, isAutoSpinning, stopAutoSpin } = useAppContext()
   const { activeHighlights } = useAgentContext()
 
   // Monochrome globe material — medium dark grey base
@@ -76,7 +76,7 @@ export default function GlobeView() {
         lat: evt.primary_latitude,
         lng: evt.primary_longitude,
         color: baseColor,
-        size: 0.2,
+        size: 0.35,
         label: `<div style="background:#111111;color:#b8b8b8;padding:6px 10px;font-size:11px;max-width:200px;border:1px solid #2a2a2a;font-family:Space Mono,Courier New,monospace"><strong style="color:#d0d0d0;font-size:11px">${evt.title}</strong><br/><span style="color:${baseColor};font-size:10px">${evt.event_type.replace(/_/g, ' ')}</span></div>`,
         event: evt,
         isPulsing: false,
@@ -94,18 +94,36 @@ export default function GlobeView() {
       .filter(a => visibleIds.has(a.eventAId) && visibleIds.has(a.eventBId))
       .map(a => {
         const key = [a.eventAId, a.eventBId].sort().join('|')
-        if (highlightedArcKeys.has(key)) {
+        const isConnectedToSelected = selectedEventId !== null &&
+          (a.eventAId === selectedEventId || a.eventBId === selectedEventId)
+        if (highlightedArcKeys.has(key) || isConnectedToSelected) {
           return { ...a, color: '#ffffff', highlighted: true }
         }
         return a
       })
-  }, [arcs, visibleIds, highlightedArcKeys])
+  }, [arcs, visibleIds, highlightedArcKeys, selectedEventId])
+
+  // Disable raycasting on arc tube meshes so they never block point clicks
+  useEffect(() => {
+    const globe = globeRef.current
+    if (!globe) return
+    const timer = setTimeout(() => {
+      globe.scene().traverse((obj: THREE.Object3D) => {
+        const mesh = obj as THREE.Mesh
+        if (mesh.isMesh && mesh.geometry?.type === 'TubeGeometry') {
+          mesh.raycast = () => {}
+        }
+      })
+    }, 50)
+    return () => clearTimeout(timer)
+  }, [visibleArcs])
 
   const handlePointClick = useCallback((point: object) => {
     const p = point as GlobePoint
     if (p?.id) {
       stopAutoSpin()
       setSelectedEventId(p.id)
+      globeRef.current?.pointOfView({ lat: p.lat - 3, lng: p.lng, altitude: 0.5 }, 800)
     }
   }, [setSelectedEventId, stopAutoSpin])
 
@@ -162,7 +180,7 @@ export default function GlobeView() {
         pointRadius={(d: object) => {
           const p = d as GlobePoint
           if (!visibleIds.has(p.id)) return 0
-          return Math.max(p.size * (altRef.current / 2.5), 0.1)
+          return Math.max(p.size * (altRef.current / 2.5), 0.15)
         }}
         pointResolution={6}
         pointAltitude={0.015}
@@ -177,17 +195,16 @@ export default function GlobeView() {
         arcEndLng="endLng"
         arcColor={(d: object) => {
           const arc = d as ArcData & { highlighted?: boolean }
-          if (arc.highlighted) return ['#ffffff', '#ffffff88']
-          return [arc.color, `${arc.color}44`]
+          if (arc.highlighted) return ['#ffffffaa', '#ffffff44']
+          return [`${arc.color}55`, `${arc.color}22`]
         }}
         arcAltitude={0.25}
         arcStroke={(d: object) => {
           const arc = d as ArcData & { highlighted?: boolean }
-          return arc.highlighted ? 1.2 : 0.4
+          return arc.highlighted ? 0.8 : 0.25
         }}
-        arcDashLength={0.4}
-        arcDashGap={0.2}
-        arcDashAnimateTime={2000}
+        arcDashLength={1}
+        arcDashGap={0}
         // Atmosphere
         atmosphereColor="#555555"
         atmosphereAltitude={0.06}

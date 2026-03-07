@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { getContentPoints } from './api/client'
-import { useAppContext } from './context/AppContext'
+import { getContentArcs, getContentPoints } from './api/client'
+import { EVENT_TYPE_COLORS, useAppContext } from './context/AppContext'
+import type { ArcData } from './context/AppContext'
 import type { Event, EventType, TimelineResponse } from './types/events'
 import GlobeView from './components/Globe/GlobeView'
 import FilterBar from './components/Filters/FilterBar'
@@ -38,7 +39,10 @@ export default function App() {
 
     async function load() {
       try {
-        const data = await getContentPoints()
+        const [data, arcsData] = await Promise.all([
+          getContentPoints(),
+          getContentArcs(0.7).catch(() => ({ arcs: [] })),
+        ])
         if (cancelled) return
 
         const KNOWN_TYPES: EventType[] = [
@@ -77,9 +81,25 @@ export default function App() {
           max_time: maxTime,
         }
 
+        const mappedArcs: ArcData[] = arcsData.arcs.map(a => {
+          const eventType = (KNOWN_TYPES.includes(a.event_type_a as EventType)
+            ? a.event_type_a
+            : 'geopolitics') as EventType
+          return {
+            startLat: a.start_lat,
+            startLng: a.start_lng,
+            endLat: a.end_lat,
+            endLng: a.end_lng,
+            color: EVENT_TYPE_COLORS[eventType],
+            relationshipType: 'embedding_similarity',
+            eventAId: a.event_a_id,
+            eventBId: a.event_b_id,
+          }
+        })
+
         setTimeline(syntheticTimeline)
         setEvents(mappedEvents)
-        setArcs([])
+        setArcs(mappedArcs)
         setLoading(false)
       } catch (e) {
         if (!cancelled) {

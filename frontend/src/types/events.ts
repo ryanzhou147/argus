@@ -97,3 +97,18 @@ export interface ContentPoint {
 export interface ContentPointsResponse {
   points: ContentPoint[]
 }
+
+export interface ContentArc {
+  event_a_id: string
+  event_b_id: string
+  similarity: number
+  start_lat: number
+  start_lng: number
+  end_lat: number
+  end_lng: number
+  event_type_a: string | null
+}
+
+export interface ContentArcsResponse {
+  arcs: ContentArc[]
+}
