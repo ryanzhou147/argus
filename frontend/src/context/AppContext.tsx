@@ -2,13 +2,13 @@ import { createContext, useContext, useState, useCallback, useRef, type ReactNod
 import type { Event, EventType, RelatedEvent, TimelineResponse } from '../types/events'
 
 export const EVENT_TYPE_COLORS: Record<EventType, string> = {
-  geopolitics: '#ef4444',
-  trade_supply_chain: '#f97316',
-  energy_commodities: '#eab308',
-  financial_markets: '#22c55e',
-  climate_disasters: '#3b82f6',
-  policy_regulation: '#a855f7',
-  humanitarian_crisis: '#ec4899',
+  geopolitics:         '#d46b4a',  // terracotta
+  trade_supply_chain:  '#d4924a',  // amber orange
+  energy_commodities:  '#d4b24a',  // warm gold
+  financial_markets:   '#c46070',  // dusty coral
+  climate_disasters:   '#a05898',  // muted violet
+  policy_regulation:   '#7858b0',  // soft purple
+  humanitarian_crisis: '#c46090',  // warm mauve
 }
 
 export const EVENT_TYPE_LABELS: Record<EventType, string> = {

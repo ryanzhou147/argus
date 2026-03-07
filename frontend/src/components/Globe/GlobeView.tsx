@@ -24,10 +24,10 @@ export default function GlobeView() {
 
   // Monochrome globe material — medium dark grey base
   const globeMaterial = useMemo(() => new THREE.MeshPhongMaterial({
-    color: '#2a2a2a',
-    emissive: '#1a1a1a',
-    specular: '#555555',
-    shininess: 6,
+    color: '#141414',
+    emissive: '#0a0a0a',
+    specular: '#2a2a2a',
+    shininess: 4,
   }), [])
 
   // Country hex-dot layer
@@ -144,7 +144,7 @@ export default function GlobeView() {
         // Country hex dots — land layer
         hexPolygonsData={countriesData.features}
         hexPolygonResolution={4}
-        hexPolygonMargin={0.4}
+        hexPolygonMargin={0.7}
         hexPolygonAltitude={0.004}
         hexPolygonColor={() => 'rgba(255, 255, 255, 0.6)'}
         // Points
@@ -185,8 +185,8 @@ export default function GlobeView() {
         arcDashGap={0.2}
         arcDashAnimateTime={2000}
         // Atmosphere
-        atmosphereColor="#888888"
-        atmosphereAltitude={0.1}
+        atmosphereColor="#555555"
+        atmosphereAltitude={0.06}
         width={window.innerWidth}
         height={window.innerHeight}
       />
