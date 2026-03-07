@@ -8,6 +8,7 @@ const ALL_TYPES: EventType[] = [
   'financial_markets',
   'climate_disasters',
   'policy_regulation',
+  'humanitarian_crisis',
 ]
 
 export default function FilterBar() {
@@ -21,35 +22,51 @@ export default function FilterBar() {
       className="absolute top-4 left-1/2 z-20 -translate-x-1/2 flex flex-col items-center gap-2"
     >
       {/* Title badge */}
-      <div className="bg-slate-900/90 backdrop-blur border border-slate-700 rounded-full px-4 py-1 text-xs font-semibold text-slate-300 tracking-wider uppercase">
-        Global Event Intelligence — Canada Impact
+      <div
+        className="px-4 py-1 text-xs font-bold tracking-widest uppercase"
+        style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border)',
+          color: 'var(--text-bright)',
+          letterSpacing: '0.12em',
+        }}
+      >
+        Argus
       </div>
 
       {/* Filter chips row */}
-      <div className="bg-slate-900/80 backdrop-blur border border-slate-700 rounded-2xl px-3 py-2 flex items-center gap-2 flex-wrap justify-center">
+      <div
+        className="px-3 py-2 flex items-center gap-2 flex-wrap justify-center"
+        style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border)',
+        }}
+      >
         {/* All / None toggles */}
         <button
           onClick={() => setAllFilters(true)}
-          className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+          className="text-xs px-3 py-1 transition-colors"
+          style={
             allActive
-              ? 'bg-slate-600 border-slate-500 text-white'
-              : 'border-slate-600 text-slate-400 hover:border-slate-400'
-          }`}
+              ? { background: 'var(--bg-raised)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }
+              : { background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)' }
+          }
         >
           All
         </button>
         <button
           onClick={() => setAllFilters(false)}
-          className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+          className="text-xs px-3 py-1 transition-colors"
+          style={
             noneActive
-              ? 'bg-slate-600 border-slate-500 text-white'
-              : 'border-slate-600 text-slate-400 hover:border-slate-400'
-          }`}
+              ? { background: 'var(--bg-raised)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }
+              : { background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-muted)' }
+          }
         >
           None
         </button>
 
-        <div className="w-px h-4 bg-slate-700" />
+        <div className="w-px h-4" style={{ background: 'var(--border)' }} />
 
         {ALL_TYPES.map(type => {
           const isActive = activeFilters.has(type)
@@ -58,24 +75,25 @@ export default function FilterBar() {
             <button
               key={type}
               onClick={() => toggleFilter(type)}
-              className="text-xs px-3 py-1 rounded-full border transition-all"
+              className="text-xs px-3 py-1 transition-all"
               style={
                 isActive
                   ? {
-                      backgroundColor: `${color}22`,
-                      borderColor: color,
+                      backgroundColor: `${color}18`,
+                      borderColor: `${color}88`,
+                      border: `1px solid ${color}88`,
                       color: color,
                     }
                   : {
                       backgroundColor: 'transparent',
-                      borderColor: '#334155',
-                      color: '#64748b',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-muted)',
                     }
               }
             >
               <span
-                className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle"
-                style={{ backgroundColor: isActive ? color : '#334155' }}
+                className="inline-block w-1.5 h-1.5 mr-1.5 align-middle"
+                style={{ backgroundColor: isActive ? color : 'var(--border-strong)' }}
               />
               {EVENT_TYPE_LABELS[type]}
             </button>

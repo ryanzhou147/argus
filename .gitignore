@@ -75,6 +75,7 @@ Icon
 .codex
 .agent
 .opencode
+openspec
 
 # Database
 *.sqlite3

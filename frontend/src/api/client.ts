@@ -1,4 +1,6 @@
 import type {
+  ContentArcsResponse,
+  ContentPointsResponse,
   EventDetail,
   EventListResponse,
   EventType,
@@ -61,4 +63,12 @@ export function getTimeline(): Promise<TimelineResponse> {
 
 export function postAgentQuery(query: string): Promise<AgentResponse> {
   return postJson<AgentResponse>('/agent/query', { query })
+}
+
+export function getContentPoints(): Promise<ContentPointsResponse> {
+  return fetchJson<ContentPointsResponse>('/content/points')
+}
+
+export function getContentArcs(threshold = 0.7): Promise<ContentArcsResponse> {
+  return fetchJson<ContentArcsResponse>(`/content/arcs?threshold=${threshold}`)
 }
