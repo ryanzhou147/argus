@@ -27,11 +27,11 @@ export default function FilterBar() {
         style={{
           background: 'var(--bg-surface)',
           border: '1px solid var(--border)',
-          color: 'var(--text-secondary)',
+          color: 'var(--text-bright)',
           letterSpacing: '0.12em',
         }}
       >
-        Global Event Intelligence — Canada Impact
+        Argus
       </div>
 
       {/* Filter chips row */}

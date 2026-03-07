@@ -160,7 +160,7 @@ export default function EventModal() {
               {/* Title */}
               <h2
                 className="font-bold text-base leading-snug"
-                style={{ color: 'var(--text-primary)' }}
+                style={{ color: 'var(--text-bright)' }}
               >
                 {detail.title}
               </h2>
@@ -262,7 +262,7 @@ export default function EventModal() {
                         }}
                       >
                         <div className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>{icon} {label}</div>
-                        <div className="text-xs font-bold tabular-nums" style={{ color: 'var(--text-primary)' }}>
+                        <div className="text-xs font-bold tabular-nums" style={{ color: 'var(--text-bright)' }}>
                           {value.toLocaleString()}
                         </div>
                       </div>
@@ -292,7 +292,7 @@ export default function EventModal() {
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold mb-0.5" style={{ color: 'var(--accent)' }}>{src.source_name}</div>
+                            <div className="text-xs font-bold mb-0.5" style={{ color: 'var(--text-primary)' }}>{src.source_name}</div>
                             <div className="text-xs leading-snug line-clamp-2" style={{ color: 'var(--text-secondary)' }}>{src.headline}</div>
                           </div>
                           <svg className="w-3 h-3 flex-shrink-0 mt-0.5" style={{ color: 'var(--text-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -327,7 +327,7 @@ export default function EventModal() {
                             className="inline-block w-1.5 h-1.5 flex-shrink-0 mt-1"
                             style={{ backgroundColor: EVENT_TYPE_COLORS[rel.event_type] }}
                           />
-                          <span className="text-xs font-bold leading-snug flex-1" style={{ color: 'var(--text-primary)' }}>{rel.title}</span>
+                          <span className="text-xs font-bold leading-snug flex-1" style={{ color: 'var(--text-bright)' }}>{rel.title}</span>
                           <span className="text-xs tabular-nums flex-shrink-0" style={{ color: 'var(--text-muted)' }}>{Math.round(rel.relationship_score * 100)}%</span>
                         </div>
                         <div className="flex items-center gap-2">
