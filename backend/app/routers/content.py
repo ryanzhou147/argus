@@ -155,3 +155,68 @@ def get_content_arcs(threshold: float = Query(default=0.7, ge=0.0, le=1.0)):
         return {"arcs": arcs}
     finally:
         conn.close()
+
+
+@router.get("/{content_id}")
+def get_content_detail(content_id: str):
+    """
+    Return a single content_table row joined with engagement (via engagement_id FK)
+    and the source name (via source_id FK).
+    Falls back to a minimal response if DATABASE_URL is not set.
+    """
+    try:
+        conn = _get_connection()
+    except Exception:
+        return {"id": content_id, "body": None, "url": None, "source_name": None,
+                "published_at": None, "engagement": None}
+
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT
+                    c.id::text,
+                    c.body,
+                    c.url,
+                    c.published_at,
+                    s.name AS source_name,
+                    e.twitter_likes,
+                    e.twitter_comments,
+                    e.twitter_views,
+                    e.twitter_reposts,
+                    e.reddit_upvotes,
+                    e.reddit_comments
+                FROM content_table c
+                LEFT JOIN sources s ON s.id = c.source_id
+                LEFT JOIN engagement e ON e.id = c.engagement_id
+                WHERE c.id = %s::uuid
+                """,
+                (content_id,),
+            )
+            row = cur.fetchone()
+
+        if row is None:
+            return {"id": content_id, "body": None, "url": None, "source_name": None,
+                    "published_at": None, "engagement": None}
+
+        engagement = None
+        if row["twitter_likes"] is not None or row["reddit_upvotes"] is not None:
+            engagement = {
+                "twitter_likes": row["twitter_likes"] or 0,
+                "twitter_comments": row["twitter_comments"] or 0,
+                "twitter_views": row["twitter_views"] or 0,
+                "twitter_reposts": row["twitter_reposts"] or 0,
+                "reddit_upvotes": row["reddit_upvotes"] or 0,
+                "reddit_comments": row["reddit_comments"] or 0,
+            }
+
+        return {
+            "id": row["id"],
+            "body": row["body"],
+            "url": row["url"],
+            "source_name": row["source_name"],
+            "published_at": row["published_at"].isoformat() if row["published_at"] else None,
+            "engagement": engagement,
+        }
+    finally:
+        conn.close()

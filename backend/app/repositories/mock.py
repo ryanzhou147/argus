@@ -147,10 +147,17 @@ class MockEventRepository(EventRepository):
             return None
 
         base = self._event_to_dict(e)
-        base["summary"] = e["summary"]
+
+        # Summary: body text from linked content items
+        content_ids = self._event_content.get(event_id, [])
+        bodies = [
+            self._content_items[cid]["body"]
+            for cid in content_ids
+            if cid in self._content_items and self._content_items[cid].get("body")
+        ]
+        base["summary"] = " ".join(bodies) if bodies else e.get("summary", "")
 
         # Source cards from linked content items
-        content_ids = self._event_content.get(event_id, [])
         source_cards = []
         for cid in content_ids:
             c = self._content_items.get(cid)
@@ -165,18 +172,7 @@ class MockEventRepository(EventRepository):
             })
         base["sources"] = source_cards
 
-        # Entities: gather from all linked content items, deduplicate
-        seen_entity_ids: set[str] = set()
-        entity_names: list[str] = []
-        for cid in content_ids:
-            for ce in self._content_entities.get(cid, []):
-                eid = ce["entity_id"]
-                if eid not in seen_entity_ids:
-                    seen_entity_ids.add(eid)
-                    ent = self._entities.get(eid)
-                    if ent:
-                        entity_names.append(ent["canonical_name"])
-        base["entities"] = entity_names
+        base["entities"] = []
 
         # Related events
         base["related_events"] = self.get_related_events(event_id)
