@@ -452,6 +452,8 @@ def _build_local_fallback(
 def call_gemini_confidence_score(title: str, body: str) -> float:
     """
     Call Gemini to rate the credibility of an event on a 0.0–1.0 scale.
+    Evaluates source reputation, detail specificity, and cross-referencing potential.
+    The score is always strictly greater than 0.3 (enforced by prompt and programmatically).
     Returns 0.5 as fallback if Gemini is unavailable or response is invalid.
     """
     if not GEMINI_API_KEY:
@@ -462,11 +464,18 @@ def call_gemini_confidence_score(title: str, body: str) -> float:
     prompt = (
         f"Event title: {title}\n"
         f"Background: {body_snippet}\n\n"
-        "Rate the credibility of this news event on a scale from 0.0 to 1.0, where:\n"
-        "- 1.0 = highly credible, well-sourced, major outlet\n"
-        "- 0.5 = uncertain or mixed signals\n"
-        "- 0.0 = likely misinformation or unverifiable\n\n"
-        "Respond with ONLY a single decimal number between 0.0 and 1.0. Nothing else."
+        "Rate the credibility of this news event on a scale from 0.31 to 1.0, "
+        "evaluating the following factors:\n"
+        "1. Source reputation: Is the event from a known, reputable outlet or authoritative source?\n"
+        "2. Detail specificity: Does the content include specific facts, dates, names, or figures that can be verified?\n"
+        "3. Cross-referencing potential: Does the event align with other known events or verifiable information?\n\n"
+        "Scoring guide:\n"
+        "- 0.9–1.0 = highly credible, well-sourced, major outlet, rich verifiable detail\n"
+        "- 0.7–0.89 = credible, reasonably sourced, some verifiable specifics\n"
+        "- 0.5–0.69 = uncertain or mixed signals, limited sourcing\n"
+        "- 0.31–0.49 = low credibility, sparse detail, unclear sourcing\n\n"
+        "IMPORTANT: The score MUST be strictly greater than 0.3. Never return 0.3 or below.\n\n"
+        "Respond with ONLY a single decimal number between 0.31 and 1.0. Nothing else."
     )
 
     try:
@@ -481,7 +490,7 @@ def call_gemini_confidence_score(title: str, body: str) -> float:
         )
         text = (response.text or "").strip()
         score = float(text)
-        return max(0.0, min(1.0, score))
+        return max(0.31, min(1.0, score))
     except ImportError:
         logger.warning("google-genai not installed; returning fallback confidence score")
         return 0.5
