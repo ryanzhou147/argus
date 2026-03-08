@@ -91,15 +91,22 @@ export default function GlobeView() {
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     mousePosRef.current = { x: e.clientX, y: e.clientY }
-    // Keep single-point tooltip following the cursor
     setHoveredSingle(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null)
+
+    setClusterGroup(prev => {
+      if (!prev || isOverModalRef.current) return prev
+      const dx = e.clientX - prev.x
+      const dy = e.clientY - prev.y
+      if (Math.abs(dx) > 60 || Math.abs(dy) > 60) return null
+      return prev
+    })
   }, [])
 
   const scheduleHide = useCallback(() => {
     if (clusterHideTimer.current) clearTimeout(clusterHideTimer.current)
     clusterHideTimer.current = setTimeout(() => {
       if (!isOverModalRef.current) setClusterGroup(null)
-    }, 250)
+    }, 80)
   }, [])
 
   const handlePointHover = useCallback((point: object | null) => {
