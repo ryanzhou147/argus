@@ -6,7 +6,7 @@ export default function AgentLauncherButton() {
   return (
     <button
       onClick={togglePanel}
-      className="fixed top-4 right-4 z-40 w-10 h-10 flex items-center justify-center transition-all"
+      className="fixed top-4 left-4 z-40 w-10 h-10 flex items-center justify-center transition-all"
       style={{
         background: isPanelOpen ? 'var(--bg-raised)' : 'var(--bg-surface)',
         border: `1px solid ${isPanelOpen ? 'var(--border-strong)' : 'var(--border)'}`,
