@@ -210,16 +210,18 @@ def confidence_score(content_id: str) -> ConfidenceScoreResponse:
     """
     Return the credibility score (0.31–1.0) for the given event.
     If a score is already stored in the database, returns it immediately.
-    Otherwise calls Gemini to generate a score, saves it to the DB, and returns it.
+    Otherwise fetches titles of similar events (same event_type) as corroborating
+    evidence, calls Gemini to generate a score, saves it to the DB, and returns it.
     """
     title = ""
     body = ""
+    corroborating_titles: list[str] = []
     try:
         conn = _get_connection()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(
-                    "SELECT title, body, confidence_score FROM content_table WHERE id = %s::uuid",
+                    "SELECT title, body, confidence_score, event_type FROM content_table WHERE id = %s::uuid",
                     (content_id,),
                 )
                 row = cur.fetchone()
@@ -228,12 +230,25 @@ def confidence_score(content_id: str) -> ConfidenceScoreResponse:
             if row is not None:
                 title = row["title"] or ""
                 body = row["body"] or ""
+                event_type = row["event_type"]
+                if event_type:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                        cur.execute(
+                            """
+                            SELECT title FROM content_table
+                            WHERE event_type = %s AND id != %s::uuid AND title IS NOT NULL
+                            ORDER BY published_at DESC
+                            LIMIT 5
+                            """,
+                            (event_type, content_id),
+                        )
+                        corroborating_titles = [r["title"] for r in cur.fetchall()]
         finally:
             conn.close()
     except Exception:
         pass  # fall through to Gemini with empty strings; will return 0.5
 
-    score = call_gemini_confidence_score(title=title, body=body)
+    score = call_gemini_confidence_score(title=title, body=body, corroborating_titles=corroborating_titles or None)
 
     try:
         conn = _get_connection()
