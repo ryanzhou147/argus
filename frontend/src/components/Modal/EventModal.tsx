@@ -8,13 +8,17 @@ import { getMediaUrls } from '../../utils/mediaConfig'
 import FinancialImpactSection from '../Agent/FinancialImpactSection'
 import RealTimeAnalysisSection from './RealTimeAnalysisSection'
 
-function HeroVideo({ src, fallbackSrc }: { src: string; fallbackSrc?: string | null }) {
+function HeroVideo({ src, fallbackSrc, onMediaFailed, onMediaReady }: { src: string; fallbackSrc?: string | null; onMediaFailed?: () => void; onMediaReady?: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     setFailed(false)
   }, [src])
+
+  useEffect(() => {
+    if (failed) onMediaFailed?.()
+  }, [failed, onMediaFailed])
 
   useEffect(() => {
     const v = videoRef.current
@@ -51,6 +55,7 @@ function HeroVideo({ src, fallbackSrc }: { src: string; fallbackSrc?: string | n
       loop
       playsInline
       preload="auto"
+      onCanPlay={() => onMediaReady?.()}
       onError={() => setFailed(true)}
       onStalled={() => {
         const v = videoRef.current
@@ -220,13 +225,15 @@ export default function EventModal() {
   const ev = events.find(e => e.id === selectedEventId) ?? null
   const [detail, setDetail] = useState<ContentDetail | null>(null)
   const [lightbox, setLightbox] = useState<{ src: string; isVideo: boolean; fallback: string | null } | null>(null)
+  const [mediaLoaded, setMediaLoaded] = useState(false)
   const [confidenceScore, setConfidenceScore] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!selectedEventId) { setDetail(null); setConfidenceScore(null); return }
+    if (!selectedEventId) { setDetail(null); setConfidenceScore(null); setMediaLoaded(false); return }
     setDetail(null)
     setConfidenceScore(null)
+    setMediaLoaded(false)
     getContentById(selectedEventId)
       .then(d => {
         setDetail(d)
@@ -316,7 +323,13 @@ export default function EventModal() {
               return (
                 <div className="relative h-44 flex-shrink-0 overflow-hidden" style={{ background: 'var(--bg-raised)' }}>
                   {media.isVideo ? (
-                    <HeroVideo key={ev.id} src={media.primary} fallbackSrc={media.fallback} />
+                    <HeroVideo
+                      key={ev.id}
+                      src={media.primary}
+                      fallbackSrc={media.fallback}
+                      onMediaReady={() => setMediaLoaded(true)}
+                      onMediaFailed={() => setMediaLoaded(false)}
+                    />
                   ) : (
                     <img
                       key={ev.id}
@@ -324,6 +337,10 @@ export default function EventModal() {
                       alt={ev.title}
                       className="w-full h-full object-cover"
                       style={{ filter: 'saturate(0.7) brightness(0.75)' }}
+                      onLoad={(e) => {
+                        const cur = (e.target as HTMLImageElement).src
+                        setMediaLoaded(!cur.endsWith('/placeholder-event.svg'))
+                      }}
                       onError={(e) => {
                         const img = e.target as HTMLImageElement
                         const step = parseInt(img.dataset.errorStep || '0', 10)
@@ -333,13 +350,14 @@ export default function EventModal() {
                         } else if (step <= 1) {
                           img.dataset.errorStep = '2'
                           img.src = '/placeholder-event.svg'
+                          setMediaLoaded(false)
                         }
                       }}
                     />
                   )}
                   <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(8,8,8,0.95) 0%, transparent 55%)' }} />
 
-                  {!isPlaceholder && (
+                  {mediaLoaded && (
                     <button
                       onClick={() => setLightbox({ src: media.primary, isVideo: media.isVideo, fallback: media.fallback })}
                       className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center transition-opacity opacity-60 hover:opacity-100"

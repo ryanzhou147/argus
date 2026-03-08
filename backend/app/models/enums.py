@@ -7,7 +7,6 @@ class EventType(StrEnum):
     FINANCIAL_MARKETS = "financial_markets"
     CLIMATE_DISASTERS = "climate_disasters"
     POLICY_REGULATION = "policy_regulation"
-    HUMANITARIAN_CRISIS = "humanitarian_crisis"
 
 class RelationshipType(StrEnum):
     MARKET_REACTION = "market_reaction"
