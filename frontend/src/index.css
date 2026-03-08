@@ -48,3 +48,12 @@ html, body, #root {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent);
 }
+
+/* Listening glow — pulsing red border on the agent panel */
+@keyframes listening-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.0), inset 0 0 0 1px rgba(220, 38, 38, 0.4); }
+  50%       { box-shadow: 0 0 18px 4px rgba(220, 38, 38, 0.25), inset 0 0 0 1px rgba(220, 38, 38, 0.8); }
+}
+.listening-glow {
+  animation: listening-glow 1.4s ease-in-out infinite;
+}

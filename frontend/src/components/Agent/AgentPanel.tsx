@@ -8,6 +8,14 @@ export default function AgentPanel() {
   const { stopAutoSpin } = useAppContext()
   const [inputValue, setInputValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  
+  const [isRecording, setIsRecording] = useState(false)
+  const [isTranscribing, setIsTranscribing] = useState(false)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const silenceTimerRef = useRef<number | null>(null)
+  const animFrameRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (isPanelOpen) {
@@ -30,6 +38,159 @@ export default function AgentPanel() {
     }
   }, [handleSubmit])
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+      if (audioContextRef.current) audioContextRef.current.close()
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop()
+      }
+    }
+  }, [])
+
+  const stopRecording = useCallback(() => {
+    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null }
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null }
+    if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop()
+    }
+  }, [])
+
+  const startRecording = useCallback(async () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') return
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+
+      // Pick best supported MIME type across browsers (Chrome: webm, Firefox: ogg)
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+        ? 'audio/mp4'
+        : ''
+
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream)
+      mediaRecorderRef.current = mediaRecorder
+      audioChunksRef.current = []
+
+      // Silence detection via Web Audio API
+      const audioContext = new AudioContext()
+      audioContextRef.current = audioContext
+      const analyser = audioContext.createAnalyser()
+      analyser.fftSize = 512
+      audioContext.createMediaStreamSource(stream).connect(analyser)
+      const dataArray = new Uint8Array(analyser.fftSize)
+      const SILENCE_THRESHOLD = 8   // RMS below this = silence
+      const SILENCE_DURATION_MS = 3000
+
+      const checkSilence = () => {
+        if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') return
+        analyser.getByteTimeDomainData(dataArray)
+        const rms = Math.sqrt(
+          dataArray.reduce((sum, val) => sum + (val - 128) ** 2, 0) / dataArray.length
+        )
+        if (rms < SILENCE_THRESHOLD) {
+          if (!silenceTimerRef.current) {
+            silenceTimerRef.current = window.setTimeout(() => {
+              silenceTimerRef.current = null
+              stopRecording()
+            }, SILENCE_DURATION_MS)
+          }
+        } else {
+          if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null }
+        }
+        animFrameRef.current = requestAnimationFrame(checkSilence)
+      }
+      animFrameRef.current = requestAnimationFrame(checkSilence)
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data)
+      }
+
+      mediaRecorder.onstop = async () => {
+        const actualMime = mediaRecorder.mimeType || 'audio/webm'
+        const ext = actualMime.includes('mp4') ? 'mp4' : actualMime.includes('ogg') ? 'ogg' : 'webm'
+        const audioBlob = new Blob(audioChunksRef.current, { type: actualMime })
+        audioChunksRef.current = []
+
+        setIsTranscribing(true)
+        setIsRecording(false)
+
+        try {
+          const formData = new FormData()
+          formData.append('file', audioBlob, `audio.${ext}`)
+          formData.append('model_id', 'scribe_v1')
+
+          const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+            method: 'POST',
+            headers: { 'xi-api-key': import.meta.env.VITE_ELEVENLABS_API_KEY || '' },
+            body: formData,
+          })
+
+          if (!response.ok) {
+            const errText = await response.text()
+            throw new Error(`ElevenLabs ${response.status}: ${errText}`)
+          }
+
+          const data = await response.json()
+          if (data.text) {
+            setInputValue(data.text)
+          }
+        } catch (err) {
+          console.error('Voice transcription error:', err)
+        } finally {
+          setIsTranscribing(false)
+          stream.getTracks().forEach(track => track.stop())
+        }
+      }
+
+      mediaRecorder.start()
+      setIsRecording(true)
+    } catch (err) {
+      console.error('Microphone access error:', err)
+      setIsRecording(false)
+    }
+  }, [stopRecording])
+
+  const toggleRecording = useCallback(() => {
+    if (isRecording) stopRecording()
+    else startRecording()
+  }, [isRecording, startRecording, stopRecording])
+
+  // Spacebar push-to-talk: hold Space to record (only when input is not focused)
+  useEffect(() => {
+    if (!isPanelOpen) return
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== 'ShiftLeft' && e.code !== 'ShiftRight' || e.repeat) return
+      if (document.activeElement === inputRef.current) return
+      if (isRecording || isTranscribing || isLoading) return
+      e.preventDefault()
+      startRecording()
+    }
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== 'ShiftLeft' && e.code !== 'ShiftRight') return
+      if (document.activeElement === inputRef.current) return
+      e.preventDefault()
+      stopRecording()
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+    }
+  }, [isPanelOpen, isRecording, isTranscribing, isLoading, startRecording, stopRecording])
+
   const exampleQueries = [
     'Why did the Red Sea shipping disruption happen?',
     'What is the financial impact of the OPEC production cut on Canada?',
@@ -42,7 +203,7 @@ export default function AgentPanel() {
       style={{ width: '420px', maxWidth: '100vw' }}
     >
       <div
-        className="h-full w-full pointer-events-auto flex flex-col"
+        className={`h-full w-full pointer-events-auto flex flex-col${isRecording ? ' listening-glow' : ''}`}
         style={{
           background: 'var(--bg-surface)',
           borderRight: '1px solid var(--border)',
@@ -125,13 +286,43 @@ export default function AgentPanel() {
               value={inputValue}
               onChange={e => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask about global events..."
-              disabled={isLoading}
+              placeholder={isRecording ? "Listening... (release Shift or click stop)" : isTranscribing ? "Transcribing..." : "Ask about global events..."}
+              disabled={isLoading || isRecording || isTranscribing}
               className="flex-1 text-xs px-3 py-2 transition-colors disabled:opacity-50"
               style={{ background: 'var(--bg-raised)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)', outline: 'none' }}
               onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
               onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
             />
+            <div className="relative flex-shrink-0 w-9 h-9">
+              {/* Ping rings visible while recording */}
+              {isRecording && <>
+                <span className="absolute inset-0 rounded-none animate-ping" style={{ background: 'rgba(220,38,38,0.3)', animationDuration: '1s' }} />
+                <span className="absolute -inset-1.5 rounded-none animate-ping" style={{ background: 'rgba(220,38,38,0.15)', animationDuration: '1s', animationDelay: '0.2s' }} />
+              </>}
+              <button
+                onClick={toggleRecording}
+                disabled={isLoading || isTranscribing}
+                className="relative w-9 h-9 flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: isRecording ? '#dc2626' : 'var(--bg-raised)',
+                  border: '1px solid var(--border-strong)',
+                  color: isRecording ? '#fff' : 'var(--text-primary)',
+                }}
+                aria-label={isRecording ? "Stop recording" : "Start voice recording"}
+              >
+                {isTranscribing ? (
+                  <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent animate-spin rounded-full" />
+                ) : isRecording ? (
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M6 18h12V6H6v12z" />
+                  </svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                )}
+              </button>
+            </div>
             <button
               onClick={handleSubmit}
               disabled={!inputValue.trim() || isLoading}
@@ -139,7 +330,7 @@ export default function AgentPanel() {
               style={{ background: 'var(--bg-raised)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }}
               aria-label="Submit query"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5 rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
             </button>
