@@ -63,7 +63,8 @@ export default function App() {
           end_time: null,
           confidence_score: 0.5,
           canada_impact_summary: '',
-          image_url: null,
+          image_url: (p as any).image_url ?? null,
+          image_s3_url: (p as any).image_s3_url ?? null,
         }))
 
         const times = mappedEvents

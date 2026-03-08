@@ -9,6 +9,7 @@ export default function TimelineSlider() {
   const { timeline, timelinePosition, setTimelinePosition } = useAppContext()
   const [isPlaying, setIsPlaying] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const positionRef = useRef<Date | null>(null)
 
   const minTime = timeline ? new Date(timeline.min_time).getTime() : 0
   const maxTime = timeline ? new Date(timeline.max_time).getTime() : 0
@@ -22,6 +23,8 @@ export default function TimelineSlider() {
       setTimelinePosition(new Date(timeline.max_time))
     }
   }, [timeline, timelinePosition, setTimelinePosition])
+
+  useEffect(() => { positionRef.current = timelinePosition }, [timelinePosition])
 
   const handleSliderChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setTimelinePosition(new Date(Number(e.target.value)))
@@ -47,14 +50,14 @@ export default function TimelineSlider() {
     if (!isPlaying) return
     const stepMs = range / 120
     intervalRef.current = setInterval(() => {
-      setTimelinePosition(prev => {
-        const next = (prev ? prev.getTime() : minTime) + stepMs
-        if (next >= maxTime) {
-          setIsPlaying(false)
-          return new Date(maxTime)
-        }
-        return new Date(next)
-      })
+const current = positionRef.current
+      const next = (current ? current.getTime() : minTime) + stepMs
+      if (next >= maxTime) {
+        setIsPlaying(false)
+        setTimelinePosition(new Date(maxTime))
+      } else {
+        setTimelinePosition(new Date(next))
+      }
     }, 150)
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)

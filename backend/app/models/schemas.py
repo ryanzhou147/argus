@@ -91,39 +91,39 @@ class EngagementSnapshot(BaseModel):
 
 
 class SourceCard(BaseModel):
-    source_name: str
-    headline: str
-    published_at: datetime
+    source_name: Optional[str] = None
+    headline: Optional[str] = None
+    published_at: Optional[datetime] = None
     url: str
 
 
 class RelatedEvent(BaseModel):
     event_id: str
-    title: str
-    event_type: EventType
-    relationship_type: RelationshipType
-    relationship_score: float
-    reason: str
-    primary_latitude: float
-    primary_longitude: float
+    title: Optional[str] = None
+    event_type: Optional[str] = None
+    relationship_type: Optional[str] = None
+    relationship_score: Optional[float] = None
+    reason: Optional[str] = None
+    primary_latitude: Optional[float] = None
+    primary_longitude: Optional[float] = None
 
 
 class Event(BaseModel):
     id: str
     title: str
-    event_type: EventType
-    primary_latitude: float
-    primary_longitude: float
-    start_time: datetime
+    event_type: Optional[str] = None
+    primary_latitude: Optional[float] = None
+    primary_longitude: Optional[float] = None
+    start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
-    confidence_score: float
-    canada_impact_summary: str
+    confidence_score: Optional[float] = None
+    canada_impact_summary: Optional[str] = None
     image_url: Optional[str] = None
     image_s3_url: Optional[str] = None
 
 
 class EventDetail(Event):
-    summary: str
+    summary: Optional[str] = None
     sources: List[SourceCard] = []
     related_events: List[RelatedEvent] = []
     entities: List[str] = []
