@@ -74,6 +74,10 @@ export function getContentArcs(threshold = 0.7): Promise<ContentArcsResponse> {
   return fetchJson<ContentArcsResponse>(`/content/arcs?threshold=${threshold}`)
 }
 
+export function postConfidenceScore(contentId: string): Promise<{ confidence_score: number }> {
+  return postJson<{ confidence_score: number }>(`/content/${contentId}/confidence-score`, {})
+}
+
 export function postRealtimeAnalysis(
   contentId: string,
   userRole?: string,

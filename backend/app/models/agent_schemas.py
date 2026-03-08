@@ -69,6 +69,10 @@ class RealTimeAnalysisResponse(BaseModel):
     analysis: str
 
 
+class ConfidenceScoreResponse(BaseModel):
+    confidence_score: float
+
+
 class AgentResponse(BaseModel):
     answer: str
     confidence: ConfidenceLevel

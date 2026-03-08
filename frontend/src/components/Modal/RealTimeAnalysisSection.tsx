@@ -8,19 +8,33 @@ interface Props {
 
 const TIMEOUT_MS = 10_000
 
+// Module-level cache: keyed by `${contentId}:${role}:${industry}`
+const analysisCache = new Map<string, string>()
+
 export default function RealTimeAnalysisSection({ contentId }: Props) {
   const { role, industry } = useUserPersona()
   const [analysis, setAnalysis] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshCounter, setRefreshCounter] = useState(0)
+
+  const cacheKey = `${contentId}:${role ?? ''}:${industry ?? ''}`
 
   useEffect(() => {
+    // Cache hit: show immediately, no fetch
+    const cached = analysisCache.get(cacheKey)
+    if (cached) {
+      setAnalysis(cached)
+      setLoading(false)
+      return
+    }
+
     let cancelled = false
     setAnalysis(null)
     setLoading(true)
 
+    // Timeout: only stop the spinner, do NOT set cancelled
     const timeoutId = setTimeout(() => {
       if (!cancelled) {
-        cancelled = true
         setLoading(false)
       }
     }, TIMEOUT_MS)
@@ -28,6 +42,7 @@ export default function RealTimeAnalysisSection({ contentId }: Props) {
     postRealtimeAnalysis(contentId, role, industry)
       .then(res => {
         if (!cancelled) {
+          analysisCache.set(cacheKey, res.analysis)
           setAnalysis(res.analysis)
           setLoading(false)
         }
@@ -41,7 +56,12 @@ export default function RealTimeAnalysisSection({ contentId }: Props) {
       cancelled = true
       clearTimeout(timeoutId)
     }
-  }, [contentId, role, industry])
+  }, [contentId, role, industry, refreshCounter]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleRefresh() {
+    analysisCache.delete(cacheKey)
+    setRefreshCounter(c => c + 1)
+  }
 
   if (loading) {
     return (
@@ -68,6 +88,18 @@ export default function RealTimeAnalysisSection({ contentId }: Props) {
       <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
         {analysis}
       </p>
+      <button
+        onClick={handleRefresh}
+        className="mt-2 text-xs px-2 py-0.5"
+        style={{
+          background: 'var(--bg-raised)',
+          border: '1px solid var(--border-strong)',
+          color: 'var(--text-muted)',
+          cursor: 'pointer',
+        }}
+      >
+        Fetch New Info
+      </button>
     </div>
   )
 }

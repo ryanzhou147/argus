@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { getContentById } from '../../api/client'
+import { getContentById, postConfidenceScore } from '../../api/client'
 import type { ContentDetail } from '../../types/events'
 import { useAppContext, EVENT_TYPE_COLORS, EVENT_TYPE_LABELS } from '../../context/AppContext'
 import type { EventType } from '../../types/events'
@@ -7,6 +7,9 @@ import { useAgentContext } from '../../context/AgentContext'
 import { getMediaUrls } from '../../utils/mediaConfig'
 import FinancialImpactSection from '../Agent/FinancialImpactSection'
 import RealTimeAnalysisSection from './RealTimeAnalysisSection'
+
+// Module-level cache for confidence scores (keyed by content ID)
+const confidenceCache = new Map<string, number>()
 
 function isEngagementEmpty(engagement: ContentDetail['engagement']): boolean {
   if (!engagement) return true
@@ -72,11 +75,13 @@ export default function EventModal() {
   const { agentResponse, activeNavigationPlan } = useAgentContext()
   const ev = events.find(e => e.id === selectedEventId) ?? null
   const [detail, setDetail] = useState<ContentDetail | null>(null)
+  const [confidenceScore, setConfidenceScore] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!selectedEventId) { setDetail(null); return }
+    if (!selectedEventId) { setDetail(null); setConfidenceScore(null); return }
     setDetail(null)
+    setConfidenceScore(null)
     getContentById(selectedEventId)
       .then(d => {
         setDetail(d)
@@ -86,6 +91,26 @@ export default function EventModal() {
       })
       .catch(() => setDetail(null))
   }, [selectedEventId, activeNavigationPlan])
+
+  // Fetch Gemini-generated confidence score when event has the default 0.5
+  useEffect(() => {
+    if (!ev || ev.confidence_score !== 0.5) return
+
+    const cached = confidenceCache.get(ev.id)
+    if (cached !== undefined) {
+      setConfidenceScore(cached)
+      return
+    }
+
+    postConfidenceScore(ev.id)
+      .then(res => {
+        confidenceCache.set(ev.id, res.confidence_score)
+        setConfidenceScore(res.confidence_score)
+      })
+      .catch(() => {
+        // Keep displaying 0.5 on failure
+      })
+  }, [ev?.id, ev?.confidence_score]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const close = useCallback(() => setSelectedEventId(null), [setSelectedEventId])
 
@@ -201,7 +226,7 @@ export default function EventModal() {
               {/* Confidence score */}
               <div>
                 <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Confidence</div>
-                <ConfidenceBar score={ev.confidence_score} />
+                <ConfidenceBar score={confidenceScore ?? ev.confidence_score} />
               </div>
 
               <div className="h-px" style={{ background: 'var(--border)' }} />

@@ -449,6 +449,47 @@ def _build_local_fallback(
     )
 
 
+def call_gemini_confidence_score(title: str, body: str) -> float:
+    """
+    Call Gemini to rate the credibility of an event on a 0.0–1.0 scale.
+    Returns 0.5 as fallback if Gemini is unavailable or response is invalid.
+    """
+    if not GEMINI_API_KEY:
+        return 0.5
+
+    body_snippet = body[:600].replace('"', "'").replace("\n", " ") if body else "(no body text)"
+
+    prompt = (
+        f"Event title: {title}\n"
+        f"Background: {body_snippet}\n\n"
+        "Rate the credibility of this news event on a scale from 0.0 to 1.0, where:\n"
+        "- 1.0 = highly credible, well-sourced, major outlet\n"
+        "- 0.5 = uncertain or mixed signals\n"
+        "- 0.0 = likely misinformation or unverifiable\n\n"
+        "Respond with ONLY a single decimal number between 0.0 and 1.0. Nothing else."
+    )
+
+    try:
+        from google import genai
+        from google.genai import types as genai_types
+
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(temperature=0.1),
+        )
+        text = (response.text or "").strip()
+        score = float(text)
+        return max(0.0, min(1.0, score))
+    except ImportError:
+        logger.warning("google-genai not installed; returning fallback confidence score")
+        return 0.5
+    except Exception as exc:
+        logger.error("Gemini confidence score error: %s", exc)
+        return 0.5
+
+
 def call_gemini_realtime_analysis(
     title: str,
     body: str,
