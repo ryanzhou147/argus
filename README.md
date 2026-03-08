@@ -9,64 +9,59 @@
 **Frontend**
 ```mermaid
 flowchart LR
-    App["App.tsx"] --> AppCtx["AppContext\nevents · arcs · filters · timeline"]
-    App --> AgentCtx["AgentContext\nquery · nav plan · highlights"]
-    App --> PersonaCtx["UserPersonaContext\nrole · industry"]
-    App --> APIClient["api/client.ts\ntyped fetch wrapper"]
+    App["App.tsx"] --> AppCtx["AppContext"]
+    App --> AgentCtx["AgentContext"]
+    App --> PersonaCtx["UserPersonaContext"]
+    App --> APIClient["api/client.ts"]
 
-    AppCtx --> Globe["GlobeView\npoints · arcs · tooltips"]
+    AppCtx --> Globe["GlobeView"]
     AppCtx --> FilterBar["FilterBar"]
     AppCtx --> Timeline["TimelineSlider"]
-    AgentCtx --> AgentPanel["AgentPanel\nvoice input · persona selector"]
-    AgentCtx --> NavOverlay["AgentNavigationOverlay\ncamera sequencer"]
-    APIClient --> Modal["EventModal\nhero image · confidence · analysis\nrelated events · source cards"]
+    AgentCtx --> AgentPanel["AgentPanel"]
+    AgentCtx --> NavOverlay["AgentNavigationOverlay"]
+    APIClient --> Modal["EventModal"]
 
-    Globe --> MediaCfg["mediaConfig.ts\nCloudinary · S3 · placeholder"]
+    Globe --> MediaCfg["mediaConfig.ts"]
     Modal --> MediaCfg
 ```
 
 **Backend**
 ```mermaid
 flowchart LR
-    Main["main.py\nFastAPI · CORS"] --> Content["/content\npoints · arcs · detail\nconfidence · analysis"]
-    Main --> AgentRouter["/agent\nquery"]
+    Main["main.py"] --> Content["/content"]
+    Main --> AgentRouter["/agent"]
     Main --> Market["/market-signals"]
     Main --> Ingest["/ingestion"]
     Main --> Embed["/embeddings"]
 
-    Content --> GeminiClient["gemini_client.py\nGemini 2.5-flash\nSearch grounding"]
-    Content --> AgentTools["agent_tools.py\nsearch · relate · detail · impact"]
-    AgentRouter --> AgentSvc["agent_service.py\nGraph-RAG pipeline"]
+    Content --> GeminiClient["gemini_client.py"]
+    Content --> AgentTools["agent_tools.py"]
+    AgentRouter --> AgentSvc["agent_service.py"]
     AgentSvc --> GeminiClient
     AgentSvc --> AgentTools
-    Market --> ScrapeSvc["scraping_service.py\nPolymarket · Kalshi"]
-    Ingest --> IngestSvc["ingestion_service.py\nACLED pipeline"]
-    Embed --> EmbedRepo["embedding_repository.py\nOpenAI embeddings"]
+    Market --> ScrapeSvc["scraping_service.py"]
+    Ingest --> IngestSvc["ingestion_service.py"]
+    Embed --> EmbedRepo["embedding_repository.py"]
 ```
 
 **Data Ingestion**
 ```mermaid
 flowchart LR
-    ACLEDApi["ACLED API"] --> IngestSvc["ingestion_service.py\nfetch → normalize → dedupe → insert"]
+    ACLEDApi["ACLED API"] --> IngestSvc["ingestion_service.py"]
     PolyKalshi["Polymarket / Kalshi"] --> ScrapeSvc["scraping_service.py"]
-    OpenAI["OpenAI API\ntext-embedding-3-small"] --> EmbedRepo["embedding_repository.py"]
-    ElevenLabs["ElevenLabs Scribe v1\nspeech-to-text"] --> AgentPanel["AgentPanel"]
-    Cloudinary["Cloudinary\nhero images · video"] --> MediaCfg["mediaConfig.ts"]
-    GeminiAPI["Google Gemini API\n2.5-flash + Search grounding"] --> GeminiClient["gemini_client.py"]
+    OpenAI["OpenAI API"] --> EmbedRepo["embedding_repository.py"]
+    ElevenLabs["ElevenLabs Scribe v1"] --> AgentPanel["AgentPanel"]
+    Cloudinary["Cloudinary"] --> MediaCfg["mediaConfig.ts"]
+    GeminiAPI["Google Gemini API"] --> GeminiClient["gemini_client.py"]
 ```
 
 **Database**
 ```mermaid
 flowchart LR
-    ContentTbl["content_table\ntitle · body · url · published_at\nlat · lon · event_type\nembedding vector(1536)\nsentiment · market_signal · image_url"]
-    Sources["sources\nname · type · trust_score"]
-    Engagement["engagement\nreddit · twitter · polymarket"]
-    Entities["entities + content_entities\nnamed entity graph"]
-    Events["events + event_relationships\ncluster layer"]
-
-    ContentTbl --> Sources
-    ContentTbl --> Engagement
-    ContentTbl --> Entities
+    ContentTbl["content_table"] --> Sources["sources"]
+    ContentTbl --> Engagement["engagement"]
+    ContentTbl --> Entities["entities"]
+    ContentTbl --> Events["event_relationships"]
 ```
 
 ---
