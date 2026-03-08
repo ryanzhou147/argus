@@ -8,7 +8,14 @@ export default function AgentPanel() {
   const { isPanelOpen, togglePanel, isLoading, agentResponse, error, submitQuery } = useAgentContext()
   const { stopAutoSpin } = useAppContext()
   const [inputValue, setInputValue] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  const autoResize = useCallback(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+  }, [])
   
   const [isRecording, setIsRecording] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
@@ -23,6 +30,11 @@ export default function AgentPanel() {
       setTimeout(() => inputRef.current?.focus(), 100)
     }
   }, [isPanelOpen])
+
+  // Reset textarea height when input is cleared (after submit)
+  useEffect(() => {
+    if (!inputValue) autoResize()
+  }, [inputValue, autoResize])
 
   const handleSubmit = useCallback(async () => {
     const q = inputValue.trim()
@@ -297,17 +309,24 @@ export default function AgentPanel() {
 
         {/* Input area */}
         <div className="px-4 py-3 flex-shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
-          <div className="flex gap-2 items-center">
-            <input
+          <div className="flex gap-2 items-end">
+            <textarea
               ref={inputRef}
-              type="text"
+              rows={1}
               value={inputValue}
-              onChange={e => setInputValue(e.target.value)}
+              onChange={e => { setInputValue(e.target.value); autoResize() }}
               onKeyDown={handleKeyDown}
               placeholder={isRecording ? "Listening... (release Shift or click stop)" : isTranscribing ? "Transcribing..." : "Ask about global events..."}
               disabled={isLoading || isRecording || isTranscribing}
-              className="flex-1 text-xs px-3 py-2 transition-colors disabled:opacity-50"
-              style={{ background: 'var(--bg-raised)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)', outline: 'none' }}
+              className="flex-1 text-xs px-3 py-2 transition-colors disabled:opacity-50 resize-none overflow-y-auto"
+              style={{
+                background: 'var(--bg-raised)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-strong)',
+                outline: 'none',
+                lineHeight: '1.5',
+                maxHeight: '120px',
+              }}
               onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
               onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
             />
