@@ -1,7 +1,10 @@
 import json
+import logging
 import math
 import os
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -205,8 +208,9 @@ def realtime_analysis(content_id: str, request: RealTimeAnalysisRequest) -> Real
 @router.post("/{content_id}/confidence-score", response_model=ConfidenceScoreResponse)
 def confidence_score(content_id: str) -> ConfidenceScoreResponse:
     """
-    Call Gemini to generate a credibility score (0.0–1.0) for the given event.
-    Returns 0.5 if Gemini is unavailable or the event is not found.
+    Return the credibility score (0.31–1.0) for the given event.
+    If a score is already stored in the database, returns it immediately.
+    Otherwise calls Gemini to generate a score, saves it to the DB, and returns it.
     """
     title = ""
     body = ""
@@ -215,10 +219,12 @@ def confidence_score(content_id: str) -> ConfidenceScoreResponse:
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(
-                    "SELECT title, body FROM content_table WHERE id = %s::uuid",
+                    "SELECT title, body, confidence_score FROM content_table WHERE id = %s::uuid",
                     (content_id,),
                 )
                 row = cur.fetchone()
+            if row is not None and row["confidence_score"] is not None:
+                return ConfidenceScoreResponse(confidence_score=float(row["confidence_score"]))
             if row is not None:
                 title = row["title"] or ""
                 body = row["body"] or ""
@@ -228,6 +234,21 @@ def confidence_score(content_id: str) -> ConfidenceScoreResponse:
         pass  # fall through to Gemini with empty strings; will return 0.5
 
     score = call_gemini_confidence_score(title=title, body=body)
+
+    try:
+        conn = _get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE content_table SET confidence_score = %s WHERE id = %s::uuid",
+                    (score, content_id),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as exc:
+        logger.warning("Failed to cache confidence_score for %s: %s", content_id, exc)
+
     return ConfidenceScoreResponse(confidence_score=score)
 
 
