@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import { postAgentQuery } from '../api/client'
 import type { AgentResponse, HighlightRelationship } from '../types/agent'
+import { useUserPersona } from './UserPersonaContext'
 
 interface AgentContextValue {
   isPanelOpen: boolean
@@ -20,6 +21,7 @@ interface AgentContextValue {
 const AgentContext = createContext<AgentContextValue | null>(null)
 
 export function AgentProvider({ children }: { children: ReactNode }) {
+  const { role, industry } = useUserPersona()
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const [currentQuery, setCurrentQuery] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -50,7 +52,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     setCurrentQuery(query)
 
     try {
-      const response = await postAgentQuery(query)
+      const response = await postAgentQuery(query, role, industry)
       setAgentResponse(response)
       setActiveHighlights(response.highlight_relationships)
       setActivePulseIds(response.navigation_plan?.pulse_event_ids ?? [])

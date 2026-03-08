@@ -62,8 +62,8 @@ export function getTimeline(): Promise<TimelineResponse> {
   return fetchJson<TimelineResponse>('/timeline')
 }
 
-export function postAgentQuery(query: string): Promise<AgentResponse> {
-  return postJson<AgentResponse>('/agent/query', { query })
+export function postAgentQuery(query: string, userRole?: string, userIndustry?: string | null): Promise<AgentResponse> {
+  return postJson<AgentResponse>('/agent/query', { query, user_role: userRole, user_industry: userIndustry ?? null })
 }
 
 export function getContentPoints(): Promise<ContentPointsResponse> {
@@ -72,4 +72,19 @@ export function getContentPoints(): Promise<ContentPointsResponse> {
 
 export function getContentArcs(threshold = 0.7): Promise<ContentArcsResponse> {
   return fetchJson<ContentArcsResponse>(`/content/arcs?threshold=${threshold}`)
+}
+
+export function postConfidenceScore(contentId: string): Promise<{ confidence_score: number }> {
+  return postJson<{ confidence_score: number }>(`/content/${contentId}/confidence-score`, {})
+}
+
+export function postRealtimeAnalysis(
+  contentId: string,
+  userRole?: string,
+  userIndustry?: string | null,
+): Promise<{ analysis: string }> {
+  return postJson<{ analysis: string }>(`/content/${contentId}/realtime-analysis`, {
+    user_role: userRole ?? null,
+    user_industry: userIndustry ?? null,
+  })
 }

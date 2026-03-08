@@ -10,6 +10,7 @@ Pipeline:
 from __future__ import annotations
 
 import re
+from typing import Optional
 
 from ..models.agent_schemas import AgentResponse, ConfidenceLevel, QueryType
 from .agent_tools import (
@@ -33,7 +34,11 @@ def _classify_query(query: str) -> QueryType:
     return QueryType.event_explanation
 
 
-async def process_agent_query(query: str) -> AgentResponse:
+async def process_agent_query(
+    query: str,
+    user_role: Optional[str] = None,
+    user_industry: Optional[str] = None,
+) -> AgentResponse:
     query_type = _classify_query(query)
 
     # ── Step 1: find closest seeds — no coordinate requirement so we capture
@@ -102,7 +107,7 @@ async def process_agent_query(query: str) -> AgentResponse:
     }
 
     # ── Step 4: Gemini reasons over the full graph context ────────────────────
-    response = call_gemini(query, tool_results, query_type, use_web_fallback)
+    response = call_gemini(query, tool_results, query_type, use_web_fallback, user_role=user_role, user_industry=user_industry)
 
     # ── Post-process: strip fields that would break globe navigation ──────────
     # Navigation plan fields must only reference events with coordinates.
