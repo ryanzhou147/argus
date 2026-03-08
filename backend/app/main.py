@@ -5,7 +5,7 @@ load_dotenv()  # Load .env so DATABASE_URL is available for scraper persist
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import events, filters, timeline, ingestion, embeddings, market_signals, content, agent
+from .routers import ingestion, embeddings, market_signals, content, agent
 
 app = FastAPI(
     title="Global Event Intelligence API",
@@ -21,10 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(events.router)
-app.include_router(filters.router)
 app.include_router(market_signals.router)
-app.include_router(timeline.router)
 app.include_router(ingestion.router)
 app.include_router(embeddings.router)
 app.include_router(content.router)

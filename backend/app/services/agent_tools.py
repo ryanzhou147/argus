@@ -1,78 +1,174 @@
 """
-Agent tool functions exposed to Gemini via function calling.
-Each function receives the repository instance and tool arguments.
+Agent tool functions: direct DB queries against content_table + engagement.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import os
+from typing import Any
 
-if TYPE_CHECKING:
-    from ..repositories.base import EventRepository
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+except ImportError:
+    psycopg2 = None  # type: ignore[assignment]
+
+
+def _get_connection():
+    if psycopg2 is None:
+        raise RuntimeError("psycopg2 not installed")
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        raise ValueError("DATABASE_URL not set")
+    return psycopg2.connect(url)
 
 
 def search_events(
-    repo: "EventRepository",
     query: str,
     event_types: list[str] | None = None,
-    start_time: str | None = None,
-    end_time: str | None = None,
     limit: int = 10,
 ) -> dict[str, Any]:
-    from datetime import datetime
-
-    start_dt = None
-    end_dt = None
     try:
-        if start_time:
-            start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-        if end_time:
-            end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-    except ValueError:
-        pass
+        conn = _get_connection()
+    except Exception:
+        return {"events": [], "total": 0}
 
-    results = repo.search_events_by_text(
-        query=query,
-        event_types=event_types,
-        start_time=start_dt,
-        end_time=end_dt,
-        limit=limit,
-    )
-    return {"events": results, "total": len(results)}
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            conditions = ["(title ILIKE %s OR body ILIKE %s)"]
+            params: list[Any] = [f"%{query}%", f"%{query}%"]
+
+            if event_types:
+                placeholders = ",".join(["%s"] * len(event_types))
+                conditions.append(f"event_type IN ({placeholders})")
+                params.extend(event_types)
+
+            where = " AND ".join(conditions)
+            cur.execute(
+                f"""
+                SELECT id::text, title, body, url, event_type, latitude, longitude,
+                       published_at
+                FROM content_table
+                WHERE {where}
+                  AND latitude IS NOT NULL AND longitude IS NOT NULL
+                ORDER BY published_at DESC
+                LIMIT %s
+                """,
+                params + [limit],
+            )
+            rows = cur.fetchall()
+
+        results = [
+            {
+                "id": r["id"],
+                "title": r["title"] or "",
+                "summary": r["body"] or "",
+                "event_type": r["event_type"] or "geopolitics",
+                "primary_latitude": r["latitude"],
+                "primary_longitude": r["longitude"],
+                "relevance_score": 80,
+            }
+            for r in rows
+        ]
+        return {"events": results, "total": len(results)}
+    finally:
+        conn.close()
 
 
-def get_event_details(repo: "EventRepository", event_id: str) -> dict[str, Any]:
-    detail = repo.get_event_detail(event_id)
-    if detail is None:
-        return {"error": f"Event '{event_id}' not found."}
-    return detail
+def get_event_details(event_id: str) -> dict[str, Any]:
+    try:
+        conn = _get_connection()
+    except Exception:
+        return {"error": "Database unavailable"}
+
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT c.id::text, c.title, c.body, c.url, c.event_type,
+                       c.latitude, c.longitude, c.published_at,
+                       s.name AS source_name,
+                       e.twitter_likes, e.reddit_upvotes, e.poly_volume
+                FROM content_table c
+                LEFT JOIN sources s ON s.id = c.source_id
+                LEFT JOIN engagement e ON e.id = c.engagement_id
+                WHERE c.id = %s::uuid
+                """,
+                (event_id,),
+            )
+            row = cur.fetchone()
+
+        if row is None:
+            return {"error": f"Event '{event_id}' not found."}
+
+        return {
+            "id": row["id"],
+            "title": row["title"],
+            "summary": row["body"],
+            "url": row["url"],
+            "event_type": row["event_type"],
+            "primary_latitude": row["latitude"],
+            "primary_longitude": row["longitude"],
+            "canada_impact_summary": "",
+            "confidence_score": 0.75,
+            "engagement": {
+                "twitter_likes": row["twitter_likes"] or 0,
+                "reddit_upvotes": row["reddit_upvotes"] or 0,
+                "poly_volume": float(row["poly_volume"] or 0),
+            },
+        }
+    finally:
+        conn.close()
 
 
-def get_related_events(
-    repo: "EventRepository",
-    event_id: str,
-    limit: int = 5,
-) -> dict[str, Any]:
-    related = repo.get_related_events(event_id)
-    # Sort by relationship_score descending
-    related.sort(key=lambda r: r.get("relationship_score", 0), reverse=True)
-    return {"related_events": related[:limit]}
+def get_related_events(event_id: str, limit: int = 5) -> dict[str, Any]:
+    """Return events with similar embeddings using pgvector cosine distance."""
+    try:
+        conn = _get_connection()
+    except Exception:
+        return {"related_events": []}
+
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT id::text, title, event_type, latitude, longitude,
+                       embedding <=> (SELECT embedding FROM content_table WHERE id = %s::uuid) AS distance
+                FROM content_table
+                WHERE id != %s::uuid
+                  AND embedding IS NOT NULL
+                  AND latitude IS NOT NULL AND longitude IS NOT NULL
+                ORDER BY distance ASC
+                LIMIT %s
+                """,
+                (event_id, event_id, limit),
+            )
+            rows = cur.fetchall()
+
+        return {
+            "related_events": [
+                {
+                    "event_id": r["id"],
+                    "title": r["title"],
+                    "event_type": r["event_type"],
+                    "primary_latitude": r["latitude"],
+                    "primary_longitude": r["longitude"],
+                    "relationship_score": round(1 - float(r["distance"]), 3),
+                }
+                for r in rows
+            ]
+        }
+    finally:
+        conn.close()
 
 
-def analyze_financial_impact(
-    repo: "EventRepository",
-    event_id: str,
-) -> dict[str, Any]:
-    detail = repo.get_event_detail(event_id)
-    if detail is None:
-        return {"error": f"Event '{event_id}' not found."}
+def analyze_financial_impact(event_id: str) -> dict[str, Any]:
+    detail = get_event_details(event_id)
+    if "error" in detail:
+        return detail
 
     event_type = detail.get("event_type", "")
-    canada_summary = detail.get("canada_impact_summary", "")
-    summary = detail.get("summary", "")
-    engagement = detail.get("engagement") or {}
-    confidence = detail.get("confidence_score", 0.5)
+    summary = detail.get("summary", "") or ""
 
-    # Sector mapping heuristic
     sector_map = {
         "energy_commodities": ["Energy", "Oil & Gas", "Alberta Producers"],
         "trade_supply_chain": ["Retail", "Manufacturing", "Transportation"],
@@ -83,11 +179,9 @@ def analyze_financial_impact(
     }
     sectors = sector_map.get(event_type, ["General Economy"])
 
-    # Direction heuristic based on sentiment in canada_summary
-    impact_direction = "uncertain"
-    neg_words = {"risk", "loss", "decline", "threat", "disruption", "increase", "higher cost", "burden"}
+    neg_words = {"risk", "loss", "decline", "threat", "disruption", "higher cost", "burden"}
     pos_words = {"opportunity", "benefit", "growth", "boost", "gain", "advantage", "expand"}
-    lower = (canada_summary + " " + summary).lower()
+    lower = summary.lower()
     neg_count = sum(1 for w in neg_words if w in lower)
     pos_count = sum(1 for w in pos_words if w in lower)
     if neg_count > pos_count:
@@ -96,46 +190,23 @@ def analyze_financial_impact(
         impact_direction = "positive"
     elif neg_count > 0 and pos_count > 0:
         impact_direction = "mixed"
+    else:
+        impact_direction = "uncertain"
 
-    uncertainty_notes = None
-    if confidence < 0.7:
-        uncertainty_notes = "Analysis based on limited evidence; confidence below threshold."
-
-    poly_volume = engagement.get("poly_volume", 0)
-    market_signal = f"Polymarket volume: {poly_volume:,}" if poly_volume else None
+    poly_volume = detail.get("engagement", {}).get("poly_volume", 0)
 
     return {
         "event_id": event_id,
-        "impact_summary": canada_summary,
+        "impact_summary": summary[:300] if summary else None,
         "affected_sectors": sectors,
         "impact_direction": impact_direction,
-        "uncertainty_notes": uncertainty_notes,
-        "market_signal": market_signal,
-        "confidence": confidence,
+        "uncertainty_notes": None,
+        "market_signal": f"Polymarket volume: {poly_volume:,.0f}" if poly_volume else None,
+        "confidence": 0.75,
     }
 
 
-def update_mock_event_data(
-    repo: "EventRepository",
-    event_id: str,
-    field_name: str,
-    new_value: Any,
-    reason: str = "",
-) -> dict[str, Any]:
-    result = repo.update_event_field(event_id, field_name, new_value)
-    if reason:
-        result["reason"] = reason
-    return result
-
-
-def web_fallback_search(
-    query: str,
-    limit: int = 3,
-) -> dict[str, Any]:
-    """
-    Lightweight web fallback. Returns mock/placeholder external results.
-    In production, replace with a real search API call.
-    """
+def web_fallback_search(query: str, limit: int = 3) -> dict[str, Any]:
     results = [
         {
             "source_name": "Reuters",
