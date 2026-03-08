@@ -93,6 +93,8 @@ export interface ContentPoint {
   longitude: number
   event_type: string | null
   published_at: string | null
+  image_url: string | null
+  s3_url: string | null
 }
 
 export interface ContentPointsResponse {
