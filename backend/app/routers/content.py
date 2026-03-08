@@ -3,7 +3,10 @@ import math
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
+
+from ..models.agent_schemas import RealTimeAnalysisRequest, RealTimeAnalysisResponse
+from ..services.gemini_client import call_gemini_realtime_analysis
 
 try:
     import psycopg2
@@ -155,6 +158,44 @@ def get_content_arcs(threshold: float = Query(default=0.7, ge=0.0, le=1.0)):
         return {"arcs": arcs}
     finally:
         conn.close()
+
+
+@router.post("/{content_id}/realtime-analysis", response_model=RealTimeAnalysisResponse)
+def realtime_analysis(content_id: str, request: RealTimeAnalysisRequest) -> RealTimeAnalysisResponse:
+    """
+    Fetch event title + body and call Gemini with Google Search grounding
+    to produce a max-3-sentence persona-aware analysis of recent developments.
+    """
+    # Fetch title + body from DB (best-effort; fallback to empty strings)
+    title = ""
+    body = ""
+    try:
+        conn = _get_connection()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT title, body FROM content_table WHERE id = %s::uuid",
+                    (content_id,),
+                )
+                row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Content not found")
+            title = row["title"] or ""
+            body = row["body"] or ""
+        finally:
+            conn.close()
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=404, detail="Content not found")
+
+    analysis = call_gemini_realtime_analysis(
+        title=title,
+        body=body,
+        user_role=request.user_role,
+        user_industry=request.user_industry,
+    )
+    return RealTimeAnalysisResponse(analysis=analysis)
 
 
 @router.get("/{content_id}")

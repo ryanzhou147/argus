@@ -22,6 +22,8 @@ class ConfidenceLevel(StrEnum):
 
 class AgentQueryRequest(BaseModel):
     query: str
+    user_role: Optional[str] = None
+    user_industry: Optional[str] = None
 
 
 class NavigationPlan(BaseModel):
@@ -56,6 +58,15 @@ class UpdateResult(BaseModel):
     field_name: Optional[str] = None
     new_value: Optional[str] = None
     message: Optional[str] = None
+
+
+class RealTimeAnalysisRequest(BaseModel):
+    user_role: Optional[str] = None
+    user_industry: Optional[str] = None
+
+
+class RealTimeAnalysisResponse(BaseModel):
+    analysis: str
 
 
 class AgentResponse(BaseModel):

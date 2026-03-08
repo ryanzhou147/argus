@@ -10,4 +10,8 @@ router = APIRouter(prefix="/agent", tags=["agent"])
 async def agent_query(request: AgentQueryRequest) -> AgentResponse:
     if not request.query or not request.query.strip():
         raise HTTPException(status_code=400, detail="Query must not be empty.")
-    return await process_agent_query(request.query.strip())
+    return await process_agent_query(
+        request.query.strip(),
+        user_role=request.user_role,
+        user_industry=request.user_industry,
+    )

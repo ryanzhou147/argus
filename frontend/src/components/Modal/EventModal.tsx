@@ -6,12 +6,17 @@ import type { EventType } from '../../types/events'
 import { useAgentContext } from '../../context/AgentContext'
 import { getMediaUrls } from '../../utils/mediaConfig'
 import FinancialImpactSection from '../Agent/FinancialImpactSection'
+import RealTimeAnalysisSection from './RealTimeAnalysisSection'
 
-function MissingData({ label }: { label: string }) {
+function isEngagementEmpty(engagement: ContentDetail['engagement']): boolean {
+  if (!engagement) return true
   return (
-    <p className="text-xs italic" style={{ color: '#8a4040' }}>
-      {label} not available.
-    </p>
+    (engagement.twitter_likes ?? 0) === 0 &&
+    (engagement.twitter_comments ?? 0) === 0 &&
+    (engagement.twitter_views ?? 0) === 0 &&
+    (engagement.twitter_reposts ?? 0) === 0 &&
+    (engagement.reddit_upvotes ?? 0) === 0 &&
+    (engagement.reddit_comments ?? 0) === 0
   )
 }
 
@@ -202,28 +207,15 @@ export default function EventModal() {
               <div className="h-px" style={{ background: 'var(--border)' }} />
 
               {/* Summary */}
-              <div>
-                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Summary</div>
-                {detail?.body
-                  ? <ExpandableText text={detail.body} />
-                  : <MissingData label="Summary" />}
-              </div>
-
-              {/* Canada Impact */}
-              <div
-                className="p-3"
-                style={{
-                  background: 'var(--bg-raised)',
-                  borderLeft: '2px solid #7a3030',
-                }}
-              >
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#8a4040' }}>CA Impact</span>
+              {detail?.body && (
+                <div>
+                  <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Summary</div>
+                  <ExpandableText text={detail.body} />
                 </div>
-                {ev.canada_impact_summary
-                  ? <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{ev.canada_impact_summary}</p>
-                  : <MissingData label="Canada impact summary" />}
-              </div>
+              )}
+
+              {/* Real-Time Analysis */}
+              <RealTimeAnalysisSection contentId={ev.id} />
 
               {/* Financial impact from agent */}
               {agentResponse?.financial_impact && agentResponse.top_event_id === ev.id && (
@@ -231,13 +223,13 @@ export default function EventModal() {
               )}
 
               {/* Engagement snapshot */}
-              <div>
-                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Engagement</div>
-                {detail?.engagement ? (
+              {!isEngagementEmpty(detail?.engagement ?? null) && (
+                <div>
+                  <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Engagement</div>
                   <div className="flex flex-col gap-1.5">
                     {[
-                      { label: 'Twitter', likes: detail.engagement.twitter_likes, comments: detail.engagement.twitter_comments, views: detail.engagement.twitter_views },
-                      { label: 'Reddit', likes: detail.engagement.reddit_upvotes, comments: detail.engagement.reddit_comments, views: null },
+                      { label: 'Twitter', likes: detail!.engagement!.twitter_likes, comments: detail!.engagement!.twitter_comments, views: detail!.engagement!.twitter_views },
+                      { label: 'Reddit', likes: detail!.engagement!.reddit_upvotes, comments: detail!.engagement!.reddit_comments, views: null },
                     ].map(({ label, likes, comments, views }) => (
                       <div key={label} className="flex items-center gap-3 px-2.5 py-2" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)' }}>
                         <span className="text-xs w-12 flex-shrink-0" style={{ color: 'var(--text-muted)' }}>{label}</span>
@@ -247,13 +239,13 @@ export default function EventModal() {
                       </div>
                     ))}
                   </div>
-                ) : <MissingData label="Engagement data" />}
-              </div>
+                </div>
+              )}
 
               {/* Source */}
-              <div>
-                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Source</div>
-                {detail?.url ? (
+              {detail?.url && (
+                <div>
+                  <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Source</div>
                   <a
                     href={detail.url}
                     target="_blank"
@@ -278,13 +270,13 @@ export default function EventModal() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                     </svg>
                   </a>
-                ) : <MissingData label="Source link" />}
-              </div>
+                </div>
+              )}
 
               {/* Related events — from arc connections */}
-              <div>
-                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Related Events</div>
-                {arcRelated.length > 0 ? (
+              {arcRelated.length > 0 && (
+                <div>
+                  <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Related Events</div>
                   <div className="flex flex-col gap-1.5">
                     {arcRelated.map(rel => (
                       <button
@@ -315,8 +307,8 @@ export default function EventModal() {
                       </button>
                     ))}
                   </div>
-                ) : <MissingData label="Related events" />}
-              </div>
+                </div>
+              )}
 
               <div className="pb-4" />
             </div>

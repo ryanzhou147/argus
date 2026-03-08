@@ -158,11 +158,40 @@ def _build_fallback_response(reason: str, query_type: QueryType = QueryType.even
     )
 
 
+_ROLE_LABELS: dict[str, str] = {
+    "general_user": "a general Canadian citizen",
+    "academic": "a Canadian academic researcher",
+    "investor": "a Canadian investor",
+    "industry_leader": "a Canadian industry leader",
+}
+
+_INDUSTRY_LABELS: dict[str, str] = {
+    "energy_resources": "Energy & Resources",
+    "technology": "Technology",
+    "financial_services": "Financial Services",
+    "agriculture_food": "Agriculture & Food",
+    "mining_minerals": "Mining & Minerals",
+    "manufacturing": "Manufacturing",
+    "healthcare_life_sciences": "Healthcare & Life Sciences",
+    "transportation_logistics": "Transportation & Logistics",
+}
+
+
+def _build_persona_prompt(user_role: str | None, user_industry: str | None) -> str:
+    role_label = _ROLE_LABELS.get(user_role or "general_user", "a general Canadian citizen")
+    if user_role == "industry_leader" and user_industry:
+        industry_label = _INDUSTRY_LABELS.get(user_industry, user_industry)
+        return f"You are responding to {role_label} in the {industry_label} sector. Tailor your Canada-focused analysis to their professional interests and industry context."
+    return f"You are responding to {role_label}. Tailor your Canada-focused analysis to their perspective."
+
+
 def call_gemini(
     query: str,
     tool_results: dict[str, Any],
     query_type: QueryType,
     use_web_fallback: bool = False,
+    user_role: str | None = None,
+    user_industry: str | None = None,
 ) -> AgentResponse:
     """
     One-shot orchestration: send query + tool results to Gemini, parse structured response.
@@ -240,11 +269,14 @@ def call_gemini(
             + "\n\nNow apply your reasoning process and return the structured JSON response."
         )
 
+        persona_prompt = _build_persona_prompt(user_role, user_industry)
+        full_system_prompt = f"{SYSTEM_PROMPT}\n\n{persona_prompt}"
+
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=user_message,
             config=genai_types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
+                system_instruction=full_system_prompt,
                 response_mime_type="application/json",
                 temperature=0.3,
             ),
@@ -259,6 +291,7 @@ def call_gemini(
     except Exception as exc:
         logger.error("Gemini API error: %s", exc)
         return _build_local_fallback(query, tool_results, query_type, use_web_fallback)
+
 
 
 def _extract_json(raw_text: str) -> dict:
@@ -414,3 +447,57 @@ def _build_local_fallback(
         source_snippets=source_snippets,
         cited_event_map=cited_event_map,
     )
+
+
+def call_gemini_realtime_analysis(
+    title: str,
+    body: str,
+    user_role: str | None = None,
+    user_industry: str | None = None,
+) -> str:
+    """
+    Call Gemini with Google Search grounding to produce a max-3-sentence
+    persona-aware analysis of recent developments on the given event.
+    Returns the analysis string, or raises on failure.
+    """
+    if not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY not configured")
+
+    persona_ctx = _build_persona_prompt(user_role, user_industry)
+
+    body_snippet = body[:600].replace('"', "'").replace("\n", " ") if body else "(no body text)"
+
+    prompt = (
+        f"Event title: {title}\n"
+        f"Background: {body_snippet}\n\n"
+        f"{persona_ctx}\n\n"
+        "Using Google Search, find the most recent news or developments related to this event. "
+        "In at most 3 concise sentences, summarize what is new and how it affects Canada from this user's perspective. "
+        "Be specific and grounded in real recent developments. Do not include citations or markdown."
+    )
+
+    try:
+        from google import genai
+        from google.genai import types as genai_types
+
+        client = genai.Client(api_key=GEMINI_API_KEY)
+
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(
+                tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
+                temperature=0.4,
+            ),
+        )
+
+        text = (response.text or "").strip()
+        if not text:
+            raise ValueError("Empty response from Gemini")
+        return text
+
+    except ImportError:
+        raise RuntimeError("google-genai not installed")
+    except Exception as exc:
+        logger.error("Gemini realtime analysis error: %s", exc)
+        raise
