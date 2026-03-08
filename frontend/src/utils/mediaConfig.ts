@@ -15,6 +15,12 @@ if (CLOUD_NAME) {
  */
 export function getEventImageUrl(publicId: string | null | undefined, width = 800, height = 450): string {
   if (!publicId) return '/placeholder-event.svg'
+
+  // If it's already a full URL (S3 or other), return it directly
+  if (publicId.startsWith('http://') || publicId.startsWith('https://')) {
+    return publicId
+  }
+
   if (!cld) return '/placeholder-event.svg'
 
   try {
@@ -34,12 +40,82 @@ export const hasCloudinary = !!CLOUD_NAME
  * Primary is the Cloudinary-transformed URL (720x720 square fill).
  * Fallback is the raw S3 URL, used in <img onError>.
  */
+const VIDEO_EXTENSIONS = /\.(mp4|mov|webm|avi|mkv|m4v)$/i
+
+export function isVideoUrl(url: string | null | undefined): boolean {
+  if (!url) return false
+  return VIDEO_EXTENSIONS.test(url)
+}
+
+const VIDEO_PUBLIC_ID_PREFIXES = ['hackcanada/x/', 'hackcanada/tiktok/']
+
+function isVideoPublicId(publicId: string | null | undefined): boolean {
+  if (!publicId) return false
+  return isVideoUrl(publicId) || VIDEO_PUBLIC_ID_PREFIXES.some(p => publicId.startsWith(p))
+}
+
+/**
+ * Build a Cloudinary *video* delivery URL.
+ * Uses /video/upload/ (not /image/upload/) so Cloudinary serves the actual mp4.
+ */
+function getCloudinaryVideoUrl(publicId: string): string | null {
+  if (!cld) return null
+  try {
+    const vid = cld.video(publicId)
+    return vid.toURL()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Build a Cloudinary thumbnail (JPEG) from a video asset.
+ * Uses /video/upload/ with .format('jpg') so Cloudinary extracts a frame.
+ */
+function getCloudinaryVideoThumb(publicId: string, width = 800, height = 450): string | null {
+  if (!cld) return null
+  try {
+    const vid = cld.video(publicId)
+    vid.resize(fill().width(width).height(height).gravity(autoGravity()))
+    vid.format('jpg')
+    return vid.toURL()
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Returns { primary, isVideo, fallback }
+ * - primary: best available media URL (Cloudinary > direct URL > placeholder)
+ * - isVideo: true when the resolved URL is a video file
+ * - fallback: secondary URL to try on error (images only)
+ */
 export function getMediaUrls(
   publicId: string | null | undefined,
   s3Url: string | null | undefined
-): { primary: string; fallback: string | null } {
-  return {
-    primary: getEventImageUrl(publicId),
-    fallback: s3Url ?? null,
+): { primary: string; isVideo: boolean; fallback: string | null } {
+  const pubIsVideo = isVideoPublicId(publicId)
+
+  if (pubIsVideo && publicId) {
+    const videoUrl = getCloudinaryVideoUrl(publicId)
+    if (videoUrl) {
+      const thumbUrl = getCloudinaryVideoThumb(publicId)
+      return { primary: videoUrl, isVideo: true, fallback: thumbUrl }
+    }
   }
+
+  const cloudUrl = getEventImageUrl(publicId)
+  const cloudFailed = cloudUrl === '/placeholder-event.svg'
+
+  if (!cloudFailed && !pubIsVideo) {
+    const s3IsImage = s3Url && !isVideoUrl(s3Url)
+    return { primary: cloudUrl, isVideo: false, fallback: s3IsImage ? s3Url : null }
+  }
+
+  if (s3Url) {
+    const s3IsVideo = isVideoUrl(s3Url)
+    return { primary: s3Url, isVideo: s3IsVideo, fallback: null }
+  }
+
+  return { primary: '/placeholder-event.svg', isVideo: false, fallback: null }
 }

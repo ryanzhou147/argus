@@ -41,7 +41,7 @@ export default function App() {
       try {
         const [data, arcsData] = await Promise.all([
           getContentPoints(),
-          getContentArcs(0.7).catch(() => ({ arcs: [] })),
+          getContentArcs(0.4).catch(() => ({ arcs: [] })),
         ])
         if (cancelled) return
 
@@ -63,7 +63,8 @@ export default function App() {
           end_time: null,
           confidence_score: 0.5,
           canada_impact_summary: '',
-          image_url: null,
+          image_url: p.image_url ?? null,
+          image_s3_url: p.s3_url ?? null,
         }))
 
         const times = mappedEvents

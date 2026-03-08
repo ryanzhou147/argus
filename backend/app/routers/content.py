@@ -59,7 +59,9 @@ def get_content_points():
                     latitude,
                     longitude,
                     event_type,
-                    published_at
+                    published_at,
+                    image_url,
+                    s3_url
                 FROM content_table
                 WHERE latitude IS NOT NULL
                   AND longitude IS NOT NULL
@@ -78,6 +80,8 @@ def get_content_points():
                     "longitude": r["longitude"],
                     "event_type": r["event_type"],
                     "published_at": r["published_at"].isoformat() if r["published_at"] else None,
+                    "image_url": r["image_url"],
+                    "s3_url": r["s3_url"],
                 }
             )
         return {"points": points}

@@ -7,6 +7,58 @@ import { useAgentContext } from '../../context/AgentContext'
 import { getMediaUrls } from '../../utils/mediaConfig'
 import FinancialImpactSection from '../Agent/FinancialImpactSection'
 
+function HeroVideo({ src, fallbackSrc }: { src: string; fallbackSrc?: string | null }) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    setFailed(false)
+  }, [src])
+
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || failed) return
+    v.muted = true
+    v.play().catch(() => {})
+  }, [src, failed])
+
+  if (failed) {
+    return (
+      <img
+        src={fallbackSrc || '/placeholder-event.svg'}
+        alt=""
+        className="w-full h-full object-cover"
+        style={{ filter: 'saturate(0.7) brightness(0.75)' }}
+        onError={(e) => {
+          const img = e.target as HTMLImageElement
+          if (!img.dataset.errored) {
+            img.dataset.errored = '1'
+            img.src = '/placeholder-event.svg'
+          }
+        }}
+      />
+    )
+  }
+
+  return (
+    <video
+      ref={videoRef}
+      src={src}
+      className="w-full h-full object-cover"
+      style={{ filter: 'saturate(0.7) brightness(0.75)' }}
+      muted
+      loop
+      playsInline
+      preload="auto"
+      onError={() => setFailed(true)}
+      onStalled={() => {
+        const v = videoRef.current
+        if (v && v.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) setFailed(true)
+      }}
+    />
+  )
+}
+
 function MissingData({ label }: { label: string }) {
   return (
     <p className="text-xs italic" style={{ color: '#8a4040' }}>
@@ -134,19 +186,34 @@ export default function EventModal() {
 
         {ev && (
           <div className="flex flex-col">
-            {/* Hero image */}
+            {/* Hero media */}
             <div className="relative h-44 flex-shrink-0 overflow-hidden" style={{ background: 'var(--bg-raised)' }}>
-              <img
-                src={getMediaUrls(ev.image_url, ev.image_s3_url).primary}
-                alt={ev.title}
-                className="w-full h-full object-cover"
-                style={{ filter: 'saturate(0.7) brightness(0.75)' }}
-                onError={(e) => {
-                  const fallback = getMediaUrls(ev.image_url, ev.image_s3_url).fallback
-                  const img = e.target as HTMLImageElement
-                  img.src = fallback ?? '/placeholder-event.svg'
-                }}
-              />
+              {(() => {
+                const media = getMediaUrls(ev.image_url, ev.image_s3_url)
+                if (media.isVideo) {
+                  return <HeroVideo key={ev.id} src={media.primary} fallbackSrc={media.fallback} />
+                }
+                return (
+                  <img
+                    key={ev.id}
+                    src={media.primary}
+                    alt={ev.title}
+                    className="w-full h-full object-cover"
+                    style={{ filter: 'saturate(0.7) brightness(0.75)' }}
+                    onError={(e) => {
+                      const img = e.target as HTMLImageElement
+                      const step = parseInt(img.dataset.errorStep || '0', 10)
+                      if (step === 0 && media.fallback) {
+                        img.dataset.errorStep = '1'
+                        img.src = media.fallback
+                      } else if (step <= 1) {
+                        img.dataset.errorStep = '2'
+                        img.src = '/placeholder-event.svg'
+                      }
+                    }}
+                  />
+                )
+              })()}
               <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(8,8,8,0.95) 0%, transparent 55%)' }} />
               {/* Type badge */}
               <span
