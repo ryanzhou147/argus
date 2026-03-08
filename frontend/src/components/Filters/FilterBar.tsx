@@ -21,18 +21,6 @@ export default function FilterBar() {
     <div
       className="absolute top-4 left-1/2 z-20 -translate-x-1/2 flex flex-col items-center gap-2"
     >
-      {/* Title badge */}
-      <div
-        className="px-4 py-1 text-xs font-bold tracking-widest uppercase"
-        style={{
-          background: 'var(--bg-surface)',
-          border: '1px solid var(--border)',
-          color: 'var(--text-bright)',
-          letterSpacing: '0.12em',
-        }}
-      >
-        Argus
-      </div>
 
       {/* Filter chips row */}
       <div

@@ -13,7 +13,7 @@ export default function AgentLauncherButton() {
         color: 'var(--text-secondary)',
       }}
       aria-label={isPanelOpen ? 'Close AI Agent' : 'Open AI Agent'}
-      title="AI Globe Copilot"
+      title="Argus AI"
     >
       {isLoading ? (
         <div className="w-4 h-4 border border-[#606060] border-t-transparent animate-spin" style={{ borderRadius: 0 }} />
