@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 
 // Mock the Cloudinary SDK before importing mediaConfig
 vi.mock('@cloudinary/url-gen', () => {
@@ -7,6 +7,7 @@ vi.mock('@cloudinary/url-gen', () => {
   // Must use function (not arrow) so it works as a `new` constructor
   function MockCloudinary(this: any) {
     this.image = vi.fn(() => mockAsset)
+    this.video = vi.fn(() => mockAsset)
   }
   return { Cloudinary: MockCloudinary }
 })
@@ -28,6 +29,7 @@ describe('mediaConfig', () => {
     it('returns a Cloudinary URL as primary when image_url is a public_id', async () => {
       // Set cloud name env var so Cloudinary client initialises
       vi.stubEnv('VITE_CLOUDINARY_CLOUD_NAME', 'dgyptiexk')
+      vi.resetModules()
 
       const { getMediaUrls } = await import('./mediaConfig')
 
