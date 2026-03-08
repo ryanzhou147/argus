@@ -202,6 +202,7 @@ export default function GlobeView() {
         ref={globeRef}
         globeMaterial={globeMaterial}
         showGraticules={false}
+        backgroundColor="rgba(0,0,0,1)"
         backgroundImageUrl=""
         // Country hex dots — land layer
         hexPolygonsData={countriesData.features}
