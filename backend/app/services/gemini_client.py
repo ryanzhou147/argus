@@ -320,11 +320,28 @@ def _extract_json(raw_text: str) -> dict:
         except json.JSONDecodeError:
             pass
 
-    # 4. Replace literal \n inside strings (common Gemini issue)
-    cleaned = re.sub(r'(?<!\\)\n(?=[^"]*"(?:[^"\\]|\\.)*")', " ", raw_text)
+    # 4. Remove unescaped control characters (0x00-0x08, 0x0b, 0x0c, 0x0e-0x1f) that
+    #    are illegal inside JSON strings but sometimes emitted by Gemini.
+    sanitized = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", raw_text)
     try:
-        return json.loads(cleaned)
+        return json.loads(sanitized)
     except json.JSONDecodeError:
+        pass
+    s2 = sanitized.find("{")
+    e2 = sanitized.rfind("}") + 1
+    if s2 != -1 and e2 > s2:
+        try:
+            return json.loads(sanitized[s2:e2])
+        except json.JSONDecodeError:
+            pass
+
+    # 5. Last resort: json_repair handles trailing commas, unquoted keys, etc.
+    try:
+        from json_repair import repair_json
+        repaired = repair_json(raw_text, return_objects=True)
+        if isinstance(repaired, dict):
+            return repaired
+    except Exception:
         pass
 
     raise ValueError(f"Could not parse JSON from Gemini response (len={len(raw_text)})")
@@ -449,10 +466,15 @@ def _build_local_fallback(
     )
 
 
-def call_gemini_confidence_score(title: str, body: str) -> float:
+def call_gemini_confidence_score(
+    title: str,
+    body: str,
+    corroborating_titles: list[str] | None = None,
+) -> float:
     """
     Call Gemini to rate the credibility of an event on a 0.0–1.0 scale.
     Evaluates source reputation, detail specificity, and cross-referencing potential.
+    If corroborating_titles are provided, they are included as evidence of cross-coverage.
     The score is always strictly greater than 0.3 (enforced by prompt and programmatically).
     Returns 0.5 as fallback if Gemini is unavailable or response is invalid.
     """
@@ -461,14 +483,22 @@ def call_gemini_confidence_score(title: str, body: str) -> float:
 
     body_snippet = body[:600].replace('"', "'").replace("\n", " ") if body else "(no body text)"
 
+    corroboration_block = ""
+    if corroborating_titles:
+        titles_list = "\n".join(f"- {t}" for t in corroborating_titles)
+        corroboration_block = (
+            f"\nCorroborating events covering the same topic:\n{titles_list}\n"
+        )
+
     prompt = (
         f"Event title: {title}\n"
-        f"Background: {body_snippet}\n\n"
+        f"Background: {body_snippet}\n"
+        f"{corroboration_block}\n"
         "Rate the credibility of this news event on a scale from 0.31 to 1.0, "
         "evaluating the following factors:\n"
         "1. Source reputation: Is the event from a known, reputable outlet or authoritative source?\n"
         "2. Detail specificity: Does the content include specific facts, dates, names, or figures that can be verified?\n"
-        "3. Cross-referencing potential: Does the event align with other known events or verifiable information?\n\n"
+        "3. Cross-referencing: Are there multiple corroborating events covering the same topic (listed above)?\n\n"
         "Scoring guide:\n"
         "- 0.9–1.0 = highly credible, well-sourced, major outlet, rich verifiable detail\n"
         "- 0.7–0.89 = credible, reasonably sourced, some verifiable specifics\n"
