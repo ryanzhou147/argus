@@ -4,13 +4,16 @@ import './index.css'
 import App from './App.tsx'
 import { AppProvider } from './context/AppContext.tsx'
 import { AgentProvider } from './context/AgentContext.tsx'
+import { UserPersonaProvider } from './context/UserPersonaContext.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AppProvider>
-      <AgentProvider>
-        <App />
-      </AgentProvider>
+      <UserPersonaProvider>
+        <AgentProvider>
+          <App />
+        </AgentProvider>
+      </UserPersonaProvider>
     </AppProvider>
   </StrictMode>,
 )

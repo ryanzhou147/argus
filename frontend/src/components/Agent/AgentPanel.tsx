@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useAgentContext } from '../../context/AgentContext'
 import { useAppContext } from '../../context/AppContext'
 import AgentAnswerView from './AgentAnswerView'
+import PersonaSelector from './PersonaSelector'
 
 export default function AgentPanel() {
   const { isPanelOpen, togglePanel, isLoading, agentResponse, error, submitQuery } = useAgentContext()
@@ -229,6 +230,8 @@ export default function AgentPanel() {
             </svg>
           </button>
         </div>
+
+        <PersonaSelector />
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-4 py-4">
