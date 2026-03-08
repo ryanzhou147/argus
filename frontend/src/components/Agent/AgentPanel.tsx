@@ -141,7 +141,7 @@ export default function AgentPanel() {
 
           const data = await response.json()
           if (data.text) {
-            setInputValue(prev => (prev.length > 0 ? `${prev} ${data.text}` : data.text))
+            setInputValue(data.text)
           }
         } catch (err) {
           console.error('Voice transcription error:', err)
@@ -169,7 +169,7 @@ export default function AgentPanel() {
     if (!isPanelOpen) return
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== 'Space' || e.repeat) return
+      if (e.code !== 'ShiftLeft' && e.code !== 'ShiftRight' || e.repeat) return
       if (document.activeElement === inputRef.current) return
       if (isRecording || isTranscribing || isLoading) return
       e.preventDefault()
@@ -177,8 +177,9 @@ export default function AgentPanel() {
     }
 
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code !== 'Space') return
+      if (e.code !== 'ShiftLeft' && e.code !== 'ShiftRight') return
       if (document.activeElement === inputRef.current) return
+      e.preventDefault()
       stopRecording()
     }
 
@@ -285,7 +286,7 @@ export default function AgentPanel() {
               value={inputValue}
               onChange={e => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isRecording ? "Listening... (release Space or click stop)" : isTranscribing ? "Transcribing..." : "Ask about global events..."}
+              placeholder={isRecording ? "Listening... (release Shift or click stop)" : isTranscribing ? "Transcribing..." : "Ask about global events..."}
               disabled={isLoading || isRecording || isTranscribing}
               className="flex-1 text-xs px-3 py-2 transition-colors disabled:opacity-50"
               style={{ background: 'var(--bg-raised)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)', outline: 'none' }}
