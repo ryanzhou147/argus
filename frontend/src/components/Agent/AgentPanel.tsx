@@ -8,7 +8,14 @@ export default function AgentPanel() {
   const { isPanelOpen, togglePanel, isLoading, agentResponse, error, submitQuery } = useAgentContext()
   const { stopAutoSpin } = useAppContext()
   const [inputValue, setInputValue] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  const autoResize = useCallback(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+  }, [])
   
   const [isRecording, setIsRecording] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
@@ -23,6 +30,11 @@ export default function AgentPanel() {
       setTimeout(() => inputRef.current?.focus(), 100)
     }
   }, [isPanelOpen])
+
+  // Sync textarea height whenever inputValue changes (covers preset clicks + clear on submit)
+  useEffect(() => {
+    autoResize()
+  }, [inputValue, autoResize])
 
   const handleSubmit = useCallback(async () => {
     const q = inputValue.trim()
@@ -204,7 +216,7 @@ export default function AgentPanel() {
       style={{ width: '420px', maxWidth: '100vw' }}
     >
       <div
-        className={`h-full w-full pointer-events-auto flex flex-col${isRecording ? ' listening-glow' : ''}`}
+        className={`h-full w-full pointer-events-auto flex flex-col${isRecording ? ' listening-glow' : isLoading ? ' generating-glow' : ''}`}
         style={{
           background: 'var(--bg-surface)',
           borderRight: '1px solid var(--border)',
@@ -234,20 +246,34 @@ export default function AgentPanel() {
         <PersonaSelector />
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto px-4 py-4">
+        <div className="flex-1 overflow-y-auto px-4">
           {!agentResponse && !isLoading && !error && (
-            <div className="flex flex-col gap-4">
-              <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                Ask me anything about global events and their impact on Canada. I'll navigate the globe to show you the relevant events.
-              </p>
-              <div>
-                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Try asking</div>
+            <div className="min-h-full flex flex-col items-center justify-center gap-6 py-8">
+              {/* Icon + description */}
+              <div className="flex flex-col items-center gap-3 text-center max-w-[280px]">
+                <div
+                  className="w-12 h-12 flex items-center justify-center"
+                  style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)' }}
+                >
+                  <svg className="w-5 h-5" style={{ color: 'var(--text-secondary)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                      d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                </div>
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                  Ask me anything about global events and their impact on Canada. I'll navigate the globe to show you the relevant events.
+                </p>
+              </div>
+
+              {/* Example queries */}
+              <div className="w-full max-w-[280px]">
+                <div className="text-xs uppercase tracking-widest mb-2.5 text-center" style={{ color: 'var(--text-muted)' }}>Try asking</div>
                 <div className="flex flex-col gap-1.5">
                   {exampleQueries.map(q => (
                     <button
                       key={q}
                       onClick={() => setInputValue(q)}
-                      className="text-left text-xs px-3 py-2 transition-colors"
+                      className="text-left text-xs px-3 py-2.5 transition-colors"
                       style={{ color: 'var(--text-secondary)', background: 'var(--bg-raised)', border: '1px solid var(--border)' }}
                       onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
                       onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
@@ -261,37 +287,46 @@ export default function AgentPanel() {
           )}
 
           {isLoading && (
-            <div className="flex flex-col items-center gap-3 py-8">
+            <div className="min-h-full flex flex-col items-center justify-center gap-3 py-8">
               <div className="w-6 h-6 border border-[#505050] border-t-transparent animate-spin" style={{ borderRadius: 0 }} />
               <p className="text-xs tracking-widest uppercase" style={{ color: 'var(--text-secondary)' }}>Analyzing global events...</p>
             </div>
           )}
 
           {error && !isLoading && (
-            <div className="p-3" style={{ background: 'var(--bg-raised)', border: '1px solid #3a2020', borderLeft: '2px solid #7a3030' }}>
+            <div className="mt-4 p-3" style={{ background: 'var(--bg-raised)', border: '1px solid #3a2020', borderLeft: '2px solid #7a3030' }}>
               <p className="text-xs" style={{ color: '#8a4040' }}>Failed to get agent response.</p>
               <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{error}</p>
             </div>
           )}
 
           {agentResponse && !isLoading && (
-            <AgentAnswerView response={agentResponse} />
+            <div className="py-4">
+              <AgentAnswerView response={agentResponse} />
+            </div>
           )}
         </div>
 
         {/* Input area */}
         <div className="px-4 py-3 flex-shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
-          <div className="flex gap-2 items-center">
-            <input
+          <div className="flex gap-2 items-end">
+            <textarea
               ref={inputRef}
-              type="text"
+              rows={1}
               value={inputValue}
-              onChange={e => setInputValue(e.target.value)}
+              onChange={e => { setInputValue(e.target.value); autoResize() }}
               onKeyDown={handleKeyDown}
               placeholder={isRecording ? "Listening... (release Shift or click stop)" : isTranscribing ? "Transcribing..." : "Ask about global events..."}
               disabled={isLoading || isRecording || isTranscribing}
-              className="flex-1 text-xs px-3 py-2 transition-colors disabled:opacity-50"
-              style={{ background: 'var(--bg-raised)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)', outline: 'none' }}
+              className="flex-1 text-xs px-3 py-2 transition-colors disabled:opacity-50 resize-none overflow-y-auto"
+              style={{
+                background: 'var(--bg-raised)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-strong)',
+                outline: 'none',
+                lineHeight: '1.5',
+                maxHeight: '120px',
+              }}
               onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
               onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
             />

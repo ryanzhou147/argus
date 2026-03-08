@@ -75,21 +75,24 @@ export default function GlobeView() {
         lng: evt.primary_longitude,
         color: baseColor,
         size: 0.35,
-        label: `<div style="background:#111111;color:#b8b8b8;padding:6px 10px;font-size:11px;max-width:200px;border:1px solid #2a2a2a;font-family:Space Mono,Courier New,monospace"><strong style="color:#d0d0d0;font-size:11px">${evt.title}</strong><br/><span style="color:${baseColor};font-size:10px">${evt.event_type.replace(/_/g, ' ')}</span></div>`,
+        label: '',
         event: evt,
         isPulsing: false,
       }
     })
   }, [events])
 
-  // Cluster hover modal
+  // Hover tooltips — single point and cluster modal
   const mousePosRef = useRef({ x: 0, y: 0 })
   const clusterHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isOverModalRef = useRef(false)
   const [clusterGroup, setClusterGroup] = useState<{ points: GlobePoint[], x: number, y: number } | null>(null)
+  const [hoveredSingle, setHoveredSingle] = useState<{ point: GlobePoint, x: number, y: number } | null>(null)
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     mousePosRef.current = { x: e.clientX, y: e.clientY }
+    // Keep single-point tooltip following the cursor
+    setHoveredSingle(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null)
   }, [])
 
   const scheduleHide = useCallback(() => {
@@ -106,6 +109,7 @@ export default function GlobeView() {
     }
     const p = point as GlobePoint | null
     if (!p) {
+      setHoveredSingle(null)
       scheduleHide()
       return
     }
@@ -118,9 +122,11 @@ export default function GlobeView() {
       return Math.sqrt(dlat * dlat + dlng * dlng) < threshold
     })
     if (nearby.length > 1) {
+      setHoveredSingle(null)
       setClusterGroup({ points: nearby, x: mousePosRef.current.x, y: mousePosRef.current.y })
     } else {
       setClusterGroup(null)
+      setHoveredSingle(visibleIds.has(p.id) ? { point: p, x: mousePosRef.current.x, y: mousePosRef.current.y } : null)
     }
   }, [allPoints, visibleIds, scheduleHide])
 
@@ -191,11 +197,6 @@ export default function GlobeView() {
   }, [])
 
 
-  const clusterPointIds = useMemo(
-    () => new Set(clusterGroup?.points.map(p => p.id) ?? []),
-    [clusterGroup]
-  )
-
   return (
     <div className="w-full h-full bg-black" onMouseMove={handleMouseMove}>
       <Globe
@@ -231,10 +232,7 @@ export default function GlobeView() {
         }}
         pointResolution={6}
         pointAltitude={0.015}
-        pointLabel={(d: object) => {
-          const p = d as GlobePoint
-          return clusterPointIds.has(p.id) ? '' : p.label
-        }}
+        pointLabel={() => ''}
         onPointClick={handlePointClick}
         onPointHover={handlePointHover}
         onZoom={handleZoom}
@@ -273,6 +271,31 @@ export default function GlobeView() {
         height={window.innerHeight}
       />
       <AgentNavigationOverlay globeRef={globeRef} />
+
+      {hoveredSingle && (
+        <div
+          style={{
+            position: 'fixed',
+            left: hoveredSingle.x + 14,
+            top: hoveredSingle.y - 10,
+            zIndex: 1000,
+            background: '#111111',
+            border: '1px solid #2a2a2a',
+            padding: '6px 10px',
+            fontSize: '11px',
+            maxWidth: '200px',
+            fontFamily: 'Space Mono, Courier New, monospace',
+            pointerEvents: 'none',
+          }}
+        >
+          <div style={{ color: '#d0d0d0', fontWeight: 'bold', fontSize: '11px', lineHeight: '1.3', marginBottom: '2px' }}>
+            {hoveredSingle.point.event.title}
+          </div>
+          <div style={{ color: hoveredSingle.point.color, fontSize: '10px' }}>
+            {hoveredSingle.point.event.event_type.replace(/_/g, ' ')}
+          </div>
+        </div>
+      )}
 
       {clusterGroup && clusterGroup.points.length > 1 && (
         <div
