@@ -13,6 +13,9 @@ export default function AgentPanel() {
   const [isTranscribing, setIsTranscribing] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const silenceTimerRef = useRef<number | null>(null)
+  const animFrameRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (isPanelOpen) {
@@ -35,16 +38,30 @@ export default function AgentPanel() {
     }
   }, [handleSubmit])
 
-  // Cleanup on unmount or if recording state changes unexpectedly
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+      if (audioContextRef.current) audioContextRef.current.close()
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
         mediaRecorderRef.current.stop()
       }
     }
   }, [])
 
-  const startRecording = async () => {
+  const stopRecording = useCallback(() => {
+    if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null }
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null }
+    if (audioContextRef.current) { audioContextRef.current.close(); audioContextRef.current = null }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop()
+    }
+  }, [])
+
+  const startRecording = useCallback(async () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') return
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
 
@@ -63,14 +80,41 @@ export default function AgentPanel() {
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data)
+      // Silence detection via Web Audio API
+      const audioContext = new AudioContext()
+      audioContextRef.current = audioContext
+      const analyser = audioContext.createAnalyser()
+      analyser.fftSize = 512
+      audioContext.createMediaStreamSource(stream).connect(analyser)
+      const dataArray = new Uint8Array(analyser.fftSize)
+      const SILENCE_THRESHOLD = 8   // RMS below this = silence
+      const SILENCE_DURATION_MS = 1500
+
+      const checkSilence = () => {
+        if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') return
+        analyser.getByteTimeDomainData(dataArray)
+        const rms = Math.sqrt(
+          dataArray.reduce((sum, val) => sum + (val - 128) ** 2, 0) / dataArray.length
+        )
+        if (rms < SILENCE_THRESHOLD) {
+          if (!silenceTimerRef.current) {
+            silenceTimerRef.current = window.setTimeout(() => {
+              silenceTimerRef.current = null
+              stopRecording()
+            }, SILENCE_DURATION_MS)
+          }
+        } else {
+          if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null }
         }
+        animFrameRef.current = requestAnimationFrame(checkSilence)
+      }
+      animFrameRef.current = requestAnimationFrame(checkSilence)
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data)
       }
 
       mediaRecorder.onstop = async () => {
-        // Use actual MIME type from recorder, not a hardcoded assumption
         const actualMime = mediaRecorder.mimeType || 'audio/webm'
         const ext = actualMime.includes('mp4') ? 'mp4' : actualMime.includes('ogg') ? 'ogg' : 'webm'
         const audioBlob = new Blob(audioChunksRef.current, { type: actualMime })
@@ -86,9 +130,7 @@ export default function AgentPanel() {
 
           const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
             method: 'POST',
-            headers: {
-              'xi-api-key': import.meta.env.VITE_ELEVENLABS_API_KEY || '',
-            },
+            headers: { 'xi-api-key': import.meta.env.VITE_ELEVENLABS_API_KEY || '' },
             body: formData,
           })
 
@@ -115,22 +157,38 @@ export default function AgentPanel() {
       console.error('Microphone access error:', err)
       setIsRecording(false)
     }
-  }
+  }, [stopRecording])
 
-  const stopRecording = () => {
-    // Check the recorder's actual state, not React state, to avoid stale closure
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop()
-    }
-  }
+  const toggleRecording = useCallback(() => {
+    if (isRecording) stopRecording()
+    else startRecording()
+  }, [isRecording, startRecording, stopRecording])
 
-  const toggleRecording = () => {
-    if (isRecording) {
-      stopRecording()
-    } else {
+  // Spacebar push-to-talk: hold Space to record (only when input is not focused)
+  useEffect(() => {
+    if (!isPanelOpen) return
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || e.repeat) return
+      if (document.activeElement === inputRef.current) return
+      if (isRecording || isTranscribing || isLoading) return
+      e.preventDefault()
       startRecording()
     }
-  }
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== 'Space') return
+      if (document.activeElement === inputRef.current) return
+      stopRecording()
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+    }
+  }, [isPanelOpen, isRecording, isTranscribing, isLoading, startRecording, stopRecording])
 
   const exampleQueries = [
     'Why did the Red Sea shipping disruption happen?',
@@ -227,7 +285,7 @@ export default function AgentPanel() {
               value={inputValue}
               onChange={e => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={isRecording ? "Listening..." : isTranscribing ? "Transcribing..." : "Ask about global events..."}
+              placeholder={isRecording ? "Listening... (release Space or click stop)" : isTranscribing ? "Transcribing..." : "Ask about global events..."}
               disabled={isLoading || isRecording || isTranscribing}
               className="flex-1 text-xs px-3 py-2 transition-colors disabled:opacity-50"
               style={{ background: 'var(--bg-raised)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)', outline: 'none' }}
