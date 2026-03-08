@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { AgentResponse } from '../../types/agent'
 import FinancialImpactSection from './FinancialImpactSection'
 import { useAppContext } from '../../context/AppContext'
@@ -17,18 +17,83 @@ const QUERY_TYPE_LABELS: Record<string, string> = {
   update_request: 'Data Update',
 }
 
+// Parse answer text into text segments and citation refs
+// Returns array of { type: 'text', value: string } | { type: 'cite', id: string, index: number }
+type Segment = { type: 'text'; value: string } | { type: 'cite'; id: string; index: number }
+
+function parseAnswerSegments(answer: string, citedMap: Record<string, string>): { segments: Segment[]; orderedIds: string[] } {
+  const CITE_RE = /\[cite:([^\]]+)\]/g
+  const segments: Segment[] = []
+  const orderedIds: string[] = []
+  const idToIndex = new Map<string, number>()
+
+  let last = 0
+  let match: RegExpExecArray | null
+
+  while ((match = CITE_RE.exec(answer)) !== null) {
+    // Gemini sometimes puts multiple IDs in one tag: [cite:uuid1, uuid2]
+    const ids = match[1].split(',').map(s => s.trim()).filter(Boolean)
+    // Only render this tag if at least one ID resolves
+    const validIds = ids.filter(id => citedMap[id])
+    if (validIds.length === 0) continue
+
+    if (match.index > last) {
+      segments.push({ type: 'text', value: answer.slice(last, match.index) })
+    }
+
+    for (const id of validIds) {
+      if (!idToIndex.has(id)) {
+        idToIndex.set(id, orderedIds.length + 1)
+        orderedIds.push(id)
+      }
+      segments.push({ type: 'cite', id, index: idToIndex.get(id)! })
+    }
+    last = match.index + match[0].length
+  }
+
+  if (last < answer.length) {
+    segments.push({ type: 'text', value: answer.slice(last) })
+  }
+
+  return { segments, orderedIds }
+}
+
 interface Props {
   response: AgentResponse
 }
 
 export default function AgentAnswerView({ response }: Props) {
   const [reasoningOpen, setReasoningOpen] = useState(false)
-  const { setSelectedEventId, events } = useAppContext()
+  const { setSelectedEventId, setGlobeFocusTarget, events, stopAutoSpin } = useAppContext()
   const confColor = CONFIDENCE_COLORS[response.confidence]
 
-  const getEventTitle = (id: string) => {
-    return events.find(e => e.id === id)?.title ?? id
+  const citedMap = response.cited_event_map ?? {}
+
+  const { segments, orderedIds } = useMemo(
+    () => parseAnswerSegments(response.answer, citedMap),
+    [response.answer, citedMap]
+  )
+
+  // Resolve title: try cited_event_map first, then live events list
+  const resolveTitle = (id: string) =>
+    citedMap[id] ?? events.find(e => e.id === id)?.title ?? id
+
+  const navigateTo = (id: string) => {
+    stopAutoSpin()
+    const evt = events.find(e => e.id === id)
+    if (evt) {
+      // Only zoom if this event has globe coordinates
+      setGlobeFocusTarget({ lat: evt.primary_latitude, lng: evt.primary_longitude })
+      setSelectedEventId(id)
+    } else {
+      // No-coord article: open the content modal directly without globe navigation
+      setSelectedEventId(id)
+    }
   }
+
+  // Relevant events that are NOT already cited inline
+  const citedSet = new Set(orderedIds)
+  const extraRelevant = response.relevant_event_ids.filter(id => !citedSet.has(id)).slice(0, 5)
 
   return (
     <div className="flex flex-col gap-4">
@@ -63,11 +128,66 @@ export default function AgentAnswerView({ response }: Props) {
         </div>
       )}
 
-      {/* Answer */}
+      {/* Answer with inline citation badges */}
       <div>
         <div className="text-xs uppercase tracking-widest mb-1.5" style={{ color: 'var(--text-muted)' }}>Analysis</div>
-        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{response.answer}</p>
+        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+          {segments.length > 0 ? segments.map((seg, i) => {
+            if (seg.type === 'text') return <span key={i}>{seg.value}</span>
+            return (
+              <button
+                key={i}
+                onClick={() => navigateTo(seg.id)}
+                title={resolveTitle(seg.id)}
+                className="inline-flex items-center gap-0.5 mx-0.5 px-1.5 py-0.5 text-[10px] font-mono leading-none transition-colors"
+                style={{
+                  background: 'var(--bg-raised)',
+                  border: '1px solid var(--border-strong)',
+                  color: 'var(--accent)',
+                  verticalAlign: 'middle',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
+                onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
+              >
+                [{seg.index}]
+              </button>
+            )
+          }) : <span>{response.answer}</span>}
+        </p>
       </div>
+
+      {/* Numbered reference list for cited events */}
+      {orderedIds.length > 0 && (
+        <div>
+          <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>References</div>
+          <div className="flex flex-col gap-1">
+            {orderedIds.map((id, idx) => (
+              <button
+                key={id}
+                onClick={() => navigateTo(id)}
+                className="flex items-start gap-2 text-left px-2.5 py-2 transition-colors"
+                style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)' }}
+                onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
+                onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+              >
+                <span
+                  className="text-[10px] font-mono flex-shrink-0 mt-0.5 px-1"
+                  style={{ color: 'var(--accent)', border: '1px solid var(--border-strong)', background: 'var(--bg-surface)' }}
+                >
+                  {idx + 1}
+                </span>
+                <span className="text-xs leading-snug truncate" style={{ color: 'var(--text-secondary)' }}>
+                  {resolveTitle(id)}
+                </span>
+                <svg className="w-2.5 h-2.5 flex-shrink-0 ml-auto mt-0.5 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Financial impact */}
       {response.financial_impact && (
@@ -103,21 +223,21 @@ export default function AgentAnswerView({ response }: Props) {
         </div>
       )}
 
-      {/* Related events */}
-      {response.relevant_event_ids.length > 0 && (
+      {/* Additional relevant events not cited inline */}
+      {extraRelevant.length > 0 && (
         <div>
-          <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Relevant Events</div>
+          <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Also Relevant</div>
           <div className="flex flex-col gap-1">
-            {response.relevant_event_ids.slice(0, 5).map(id => (
+            {extraRelevant.map(id => (
               <button
                 key={id}
-                onClick={() => setSelectedEventId(id)}
+                onClick={() => navigateTo(id)}
                 className="text-left text-xs px-2.5 py-1.5 transition-colors truncate"
                 style={{ color: 'var(--text-secondary)', background: 'var(--bg-raised)', border: '1px solid var(--border)' }}
                 onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
                 onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
               >
-                {getEventTitle(id)}
+                {resolveTitle(id)}
               </button>
             ))}
           </div>

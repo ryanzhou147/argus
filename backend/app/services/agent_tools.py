@@ -1,16 +1,38 @@
 """
 Agent tool functions: direct DB queries against content_table + engagement.
+Search strategy:
+  1. Vector similarity (RAG) — embed the query with text-embedding-3-small and use
+     pgvector cosine distance against pre-computed embeddings. Requires OPENAI_API_KEY.
+  2. Keyword fallback — title ILIKE on extracted keywords (no API key needed).
 """
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
 except ImportError:
     psycopg2 = None  # type: ignore[assignment]
+
+
+def _embed_query(text: str) -> list[float] | None:
+    """Embed text with the same model used to build the stored vectors."""
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return None
+    try:
+        import openai
+        client = openai.OpenAI(api_key=api_key)
+        response = client.embeddings.create(model="text-embedding-3-small", input=text)
+        return response.data[0].embedding
+    except Exception as exc:
+        logger.warning("Embedding query failed: %s", exc)
+        return None
 
 
 def _get_connection():
@@ -26,36 +48,109 @@ def search_events(
     query: str,
     event_types: list[str] | None = None,
     limit: int = 10,
+    require_coords: bool = True,
 ) -> dict[str, Any]:
     try:
         conn = _get_connection()
     except Exception:
         return {"events": [], "total": 0}
 
+    # Embed the query for vector similarity search (RAG)
+    query_vec = _embed_query(query)
+
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            conditions = ["(title ILIKE %s OR body ILIKE %s)"]
-            params: list[Any] = [f"%{query}%", f"%{query}%"]
-
+            type_clause = ""
+            type_params: list[Any] = []
             if event_types:
                 placeholders = ",".join(["%s"] * len(event_types))
-                conditions.append(f"event_type IN ({placeholders})")
-                params.extend(event_types)
+                type_clause = f"AND event_type IN ({placeholders})"
+                type_params = list(event_types)
 
-            where = " AND ".join(conditions)
-            cur.execute(
-                f"""
-                SELECT id::text, title, body, url, event_type, latitude, longitude,
-                       published_at
-                FROM content_table
-                WHERE {where}
-                  AND latitude IS NOT NULL AND longitude IS NOT NULL
-                ORDER BY published_at DESC
-                LIMIT %s
-                """,
-                params + [limit],
-            )
-            rows = cur.fetchall()
+            seen_ids: set[str] = set()
+            rows: list[Any] = []
+
+            _STOP = {"what", "how", "why", "when", "where", "who", "is", "are",
+                     "was", "were", "the", "and", "for", "did", "has", "have",
+                     "does", "will", "can", "about", "with", "this", "that", "its",
+                     "explain", "tell", "show", "find", "give", "me", "us", "an", "on"}
+            keywords = [w.strip("?.,!") for w in query.split()
+                        if len(w.strip("?.,!")) > 2 and w.lower().strip("?.,!") not in _STOP]
+
+            coord_clause = "AND latitude IS NOT NULL AND longitude IS NOT NULL" if require_coords else ""
+
+            # ── STEP 1: keyword title match (always runs first) ──────────────
+            # Seeds don't need globe coordinates — we need the most informative
+            # articles, even if they have no lat/lng (those are still used as context).
+            if keywords:
+                # Exact phrase — highest precision, no coordinate requirement
+                cur.execute(
+                    f"""
+                    SELECT id::text, title, body, url, event_type, latitude, longitude,
+                           published_at, 1.0 AS rank
+                    FROM content_table
+                    WHERE title ILIKE %s
+                      {coord_clause}
+                      {type_clause}
+                    ORDER BY published_at DESC LIMIT %s
+                    """,
+                    [f"%{query}%"] + type_params + [limit],
+                )
+                for r in cur.fetchall():
+                    if r["id"] not in seen_ids:
+                        seen_ids.add(r["id"]); rows.append(r)
+
+                # Keyword OR on title — score by how many keywords match
+                if len(rows) < limit:
+                    ilike_conds = " OR ".join(["title ILIKE %s"] * len(keywords))
+                    # Count matching keywords as a relevance proxy
+                    count_expr = " + ".join(
+                        [f"(CASE WHEN title ILIKE %s THEN 1 ELSE 0 END)"] * len(keywords)
+                    )
+                    cur.execute(
+                        f"""
+                        SELECT id::text, title, body, url, event_type, latitude, longitude,
+                               published_at,
+                               ({count_expr})::float / {len(keywords)} AS rank
+                        FROM content_table
+                        WHERE ({ilike_conds})
+                          {coord_clause}
+                          {type_clause}
+                        ORDER BY rank DESC, published_at DESC LIMIT %s
+                        """,
+                        [f"%{k}%" for k in keywords] * 2 + type_params + [limit],
+                    )
+                    for r in cur.fetchall():
+                        if r["id"] not in seen_ids:
+                            seen_ids.add(r["id"]); rows.append(r)
+
+            # ── STEP 2: vector search fills remaining slots ───────────────────
+            # Excluded: ACLED-style micro-events (body < 150 chars) which have
+            # degenerate embeddings that pollute seed selection.
+            if query_vec is not None and len(rows) < limit:
+                remaining = limit - len(rows)
+                vec_str = "[" + ",".join(str(x) for x in query_vec) + "]"
+                cur.execute(
+                    f"""
+                    SELECT id::text, title, body, url, event_type, latitude, longitude,
+                           published_at,
+                           1 - (embedding <=> %s::vector) AS rank
+                    FROM content_table
+                    WHERE embedding IS NOT NULL
+                      {coord_clause}
+                      AND LENGTH(COALESCE(body, '')) > 150
+                      {type_clause}
+                    ORDER BY embedding <=> %s::vector ASC
+                    LIMIT %s
+                    """,
+                    [vec_str, vec_str] + type_params + [remaining * 3],
+                )
+                for r in cur.fetchall():
+                    if r["id"] not in seen_ids and len(rows) < limit:
+                        seen_ids.add(r["id"]); rows.append(r)
+                logger.info("After vector fill: %d total results for query: %s", len(rows), query[:60])
+
+            rows = rows[:limit]
 
         results = [
             {

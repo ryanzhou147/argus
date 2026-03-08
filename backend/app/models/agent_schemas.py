@@ -72,3 +72,5 @@ class AgentResponse(BaseModel):
     financial_impact: Optional[FinancialImpact] = None
     source_snippets: List[SourceSnippet] = []
     update_result: Optional[UpdateResult] = None
+    # Maps event_id -> title for resolving [cite:id] inline citations in the answer
+    cited_event_map: dict[str, str] = {}

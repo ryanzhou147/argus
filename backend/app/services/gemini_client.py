@@ -103,36 +103,48 @@ TOOL_DECLARATIONS = [
 
 SYSTEM_PROMPT = """You are an expert geopolitical analyst specializing in global events and their impact on Canada.
 
-You have access to an internal event intelligence graph with seeded real-world events. Always search internal data first.
+You receive data from a graph-RAG pipeline:
+- "search_results.events": the 2 semantically closest seed articles to the query, plus articles reachable via their embedding-similarity arcs
+- "graph_expansion.neighbor_graph": which seed each neighbor came from and their similarity score
+- "event_details": full body text of the seed articles
 
-When answering, you MUST return a valid JSON object conforming exactly to this schema:
+REASONING PROCESS — follow these steps explicitly in your reasoning_steps:
+1. Identify the core event(s) from the seeds
+2. Survey the neighbor articles — what related threads do they reveal?
+3. FOR EACH relevant article: explicitly ask "How does this connect to Canada?" — consider trade flows, energy exports, military commitments, CAD exchange rate, immigration, commodity prices, Arctic sovereignty, supply chains, diplomatic posture
+4. Synthesize a Canada-focused answer drawing on the strongest connections found
+
+CITATION RULES:
+- Cite events inline as [cite:EVENT_ID] using exact UUIDs from the data. Never invent IDs.
+- Example: "Canada's decision to stay out [cite:abc-123] reflects its traditional NATO burden-sharing tension."
+- Each [cite:...] tag must contain EXACTLY ONE UUID. Never put multiple IDs in one tag.
+- WRONG: [cite:abc-123, def-456]  RIGHT: [cite:abc-123] [cite:def-456]
+- Aim for 2-5 inline citations per answer.
+
+When answering, return a valid JSON object with this exact schema:
 {
-  "answer": "string - comprehensive answer to the user's question",
+  "answer": "string — Canada-focused answer with inline [cite:EVENT_ID] citations",
   "confidence": "high" | "medium" | "low",
-  "caution": "string or null - explain limitations if confidence is low",
+  "caution": "string or null",
   "mode": "internal" | "fallback_web" | "update",
   "query_type": "event_explanation" | "impact_analysis" | "connection_discovery" | "entity_relevance" | "update_request",
-  "top_event_id": "string or null - primary event ID",
-  "relevant_event_ids": ["array of relevant event IDs"],
+  "top_event_id": "string or null — the single most relevant event ID",
+  "relevant_event_ids": ["IDs of all events that matter to the answer, seeds + neighbors"],
   "highlight_relationships": [{"event_a_id": "string", "event_b_id": "string", "relationship_type": "string"}],
   "navigation_plan": {
     "center_on_event_id": "string or null",
     "zoom_level": "cluster" | "event" | null,
     "open_modal_event_id": "string or null",
-    "pulse_event_ids": ["array of event IDs to pulse"]
+    "pulse_event_ids": ["IDs to pulse on globe — seeds + most relevant neighbors"]
   },
-  "reasoning_steps": ["step 1", "step 2", ...],
-  "financial_impact": null or {
-    "summary": "string",
-    "affected_sectors": ["list of sectors"],
-    "impact_direction": "positive" | "negative" | "mixed" | "uncertain",
-    "uncertainty_notes": "string or null"
-  },
+  "reasoning_steps": ["step 1 — identify core event", "step 2 — survey neighbors", "step 3 — Canada links", "step 4 — synthesis"],
+  "financial_impact": null or {"summary": "string", "affected_sectors": ["..."], "impact_direction": "positive|negative|mixed|uncertain", "uncertainty_notes": "string or null"},
   "source_snippets": [],
-  "update_result": null or {"status": "success"|"failure", "field_name": "string", "new_value": "string", "message": "string"}
+  "update_result": null,
+  "cited_event_map": {"EVENT_ID": "Event Title for every ID cited above"}
 }
 
-Focus on Canada's perspective. Be specific about economic, trade, and geopolitical impacts on Canada."""
+Always ground your answer in the provided data. If a neighbor article strengthens or contradicts the seed, say so. Never omit the Canada angle."""
 
 
 def _build_fallback_response(reason: str, query_type: QueryType = QueryType.event_explanation) -> AgentResponse:
@@ -172,13 +184,60 @@ def call_gemini(
 
         client = genai.Client(api_key=GEMINI_API_KEY)
 
-        # Build the user message with tool results embedded
-        tool_context = json.dumps(tool_results, indent=2, default=str)
+        # Build a structured graph-context message for Gemini
+        graph = tool_results.get("graph_expansion", {})
+        seeds = graph.get("seeds", [])
+        neighbor_graph = graph.get("neighbor_graph", {})
+        all_events = tool_results.get("search_results", {}).get("events", [])
+        event_details = tool_results.get("event_details", [])
+
+        def _sanitize(text: str, max_len: int = 400) -> str:
+            """Strip chars that break JSON string embedding."""
+            return text[:max_len].replace('"', "'").replace("\n", " ").replace("\r", "").replace("\\", "/")
+
+        # Seed summaries
+        seed_lines = []
+        for ev in all_events:
+            if ev["id"] in seeds:
+                detail = next((d for d in event_details if d.get("id") == ev["id"]), {})
+                body_snippet = _sanitize(detail.get("summary") or "")
+                seed_lines.append(
+                    f'  • [{ev["id"]}] "{_sanitize(ev["title"], 120)}"\n'
+                    f'    type={ev["event_type"]} | body: {body_snippet}'
+                )
+
+        # Neighbor summaries per seed
+        neighbor_lines = []
+        for sid, nbrs in neighbor_graph.items():
+            for n in nbrs:
+                nev = next((e for e in all_events if e["id"] == n["event_id"]), None)
+                if nev:
+                    neighbor_lines.append(
+                        f'  • [{n["event_id"]}] "{_sanitize(n["title"], 100)}" (arc from seed {sid}, score={n.get("score", "?")})'
+                    )
+
         user_message = (
-            f"User question: {query}\n\n"
-            f"Internal data retrieved:\n{tool_context}\n\n"
-            f"Web fallback used: {use_web_fallback}\n\n"
-            "Please analyze this data and return your structured JSON response."
+            f"USER QUESTION: {query}\n\n"
+            f"=== SEED ARTICLES (closest embedding match to query) ===\n"
+            + ("\n".join(seed_lines) if seed_lines else "  (none found)")
+            + f"\n\n=== NEIGHBOR ARTICLES (connected via arc similarity) ===\n"
+            + ("\n".join(neighbor_lines) if neighbor_lines else "  (none)")
+            + f"\n\n=== FULL CONTEXT JSON (IDs, coordinates, scores — no body text) ===\n"
+            + json.dumps(
+                {
+                    k: (
+                        # Strip body/summary from search_results to avoid JSON-breaking chars
+                        {"events": [
+                            {ek: ev[ek] for ek in ev if ek != "summary"}
+                            for ev in v.get("events", [])
+                        ], "total": v.get("total")}
+                        if k == "search_results" else v
+                    )
+                    for k, v in tool_results.items() if k not in ("event_details",)
+                },
+                indent=2, default=str
+            )
+            + "\n\nNow apply your reasoning process and return the structured JSON response."
         )
 
         response = client.models.generate_content(
@@ -202,9 +261,45 @@ def call_gemini(
         return _build_local_fallback(query, tool_results, query_type, use_web_fallback)
 
 
+def _extract_json(raw_text: str) -> dict:
+    """Try increasingly lenient approaches to extract a JSON object from Gemini output."""
+    # 1. Direct parse
+    try:
+        return json.loads(raw_text)
+    except json.JSONDecodeError:
+        pass
+
+    # 2. Strip markdown code fences (```json ... ```)
+    import re
+    stripped = re.sub(r"^```(?:json)?\s*", "", raw_text.strip(), flags=re.IGNORECASE)
+    stripped = re.sub(r"\s*```$", "", stripped.strip())
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+
+    # 3. Extract the outermost {...} block
+    start = raw_text.find("{")
+    end = raw_text.rfind("}") + 1
+    if start != -1 and end > start:
+        try:
+            return json.loads(raw_text[start:end])
+        except json.JSONDecodeError:
+            pass
+
+    # 4. Replace literal \n inside strings (common Gemini issue)
+    cleaned = re.sub(r'(?<!\\)\n(?=[^"]*"(?:[^"\\]|\\.)*")', " ", raw_text)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    raise ValueError(f"Could not parse JSON from Gemini response (len={len(raw_text)})")
+
+
 def _parse_gemini_response(raw_text: str, query_type: QueryType) -> AgentResponse:
     try:
-        data = json.loads(raw_text)
+        data = _extract_json(raw_text)
         # Coerce enums
         data["confidence"] = ConfidenceLevel(data.get("confidence", "low"))
         data["query_type"] = QueryType(data.get("query_type", query_type))
@@ -221,6 +316,9 @@ def _parse_gemini_response(raw_text: str, query_type: QueryType) -> AgentRespons
             data["source_snippets"] = [SourceSnippet(**s) for s in data["source_snippets"]]
         if data.get("update_result"):
             data["update_result"] = UpdateResult(**data["update_result"])
+        # cited_event_map is a plain dict – pass through as-is
+        if not isinstance(data.get("cited_event_map"), dict):
+            data["cited_event_map"] = {}
 
         return AgentResponse(**data)
     except Exception as exc:
@@ -295,6 +393,8 @@ def _build_local_fallback(
                 relationship_type=r.get("relationship_type"),
             ))
 
+    cited_event_map = {e["id"]: e["title"] for e in events[:5] if e.get("id") and e.get("title")}
+
     return AgentResponse(
         answer=answer,
         confidence=confidence,
@@ -312,4 +412,5 @@ def _build_local_fallback(
         ],
         financial_impact=fin_impact,
         source_snippets=source_snippets,
+        cited_event_map=cited_event_map,
     )

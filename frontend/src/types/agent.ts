@@ -55,4 +55,6 @@ export interface AgentResponse {
   financial_impact: FinancialImpact | null
   source_snippets: SourceSnippet[]
   update_result: UpdateResult | null
+  /** Maps event_id -> title for resolving [cite:id] inline citations in the answer */
+  cited_event_map: Record<string, string>
 }
