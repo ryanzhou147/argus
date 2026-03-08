@@ -5,7 +5,6 @@ export type EventType =
   | 'financial_markets'
   | 'climate_disasters'
   | 'policy_regulation'
-  | 'humanitarian_crisis'
 
 export type RelationshipType =
   | 'market_reaction'
