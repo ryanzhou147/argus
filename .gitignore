@@ -120,3 +120,4 @@ ehthumbs.db
 Thumbs.db
 
 *.json
+.pytest_cache/
