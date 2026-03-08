@@ -113,3 +113,21 @@ export interface ContentArc {
 export interface ContentArcsResponse {
   arcs: ContentArc[]
 }
+
+export interface ContentEngagement {
+  twitter_likes: number
+  twitter_comments: number
+  twitter_views: number
+  twitter_reposts: number
+  reddit_upvotes: number
+  reddit_comments: number
+}
+
+export interface ContentDetail {
+  id: string
+  body: string | null
+  url: string | null
+  source_name: string | null
+  published_at: string | null
+  engagement: ContentEngagement | null
+}

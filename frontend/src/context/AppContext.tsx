@@ -55,6 +55,10 @@ interface AppContextValue {
   arcs: ArcData[]
   setArcs: (arcs: ArcData[]) => void
 
+  // Globe camera focus (set to pan globe to a location)
+  globeFocusTarget: { lat: number; lng: number } | null
+  setGlobeFocusTarget: (target: { lat: number; lng: number } | null) => void
+
   // Auto-spin
   isAutoSpinning: boolean
   stopAutoSpin: () => void
@@ -83,6 +87,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [activeFilters, setActiveFilters] = useState<Set<EventType>>(new Set(ALL_TYPES))
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
   const [arcs, setArcs] = useState<ArcData[]>([])
+  const [globeFocusTarget, setGlobeFocusTarget] = useState<{ lat: number; lng: number } | null>(null)
   const [isAutoSpinning, setIsAutoSpinning] = useState(true)
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -144,6 +149,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSelectedEventId,
         arcs,
         setArcs,
+        globeFocusTarget,
+        setGlobeFocusTarget,
         isAutoSpinning,
         stopAutoSpin,
         resetInactivityTimer,

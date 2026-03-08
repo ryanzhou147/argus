@@ -1,13 +1,14 @@
 import type {
   ContentArcsResponse,
+  ContentDetail,
   ContentPointsResponse,
-  EventDetail,
   EventListResponse,
   EventType,
   FilterResponse,
   RelatedEventsResponse,
   TimelineResponse,
 } from '../types/events'
+// EventDetail intentionally removed — modal now uses getContentById
 import type { AgentResponse } from '../types/agent'
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api'
@@ -45,8 +46,8 @@ export function getEvents(params?: {
   return fetchJson<EventListResponse>(`/events${query}`)
 }
 
-export function getEventById(eventId: string): Promise<EventDetail> {
-  return fetchJson<EventDetail>(`/events/${eventId}`)
+export function getContentById(contentId: string): Promise<ContentDetail> {
+  return fetchJson<ContentDetail>(`/content/${contentId}`)
 }
 
 export function getRelatedEvents(eventId: string): Promise<RelatedEventsResponse> {

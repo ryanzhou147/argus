@@ -19,7 +19,7 @@ interface GlobePoint {
 
 export default function GlobeView() {
   const globeRef = useRef<any>(null)
-  const { events, timelinePosition, activeFilters, selectedEventId, setSelectedEventId, arcs, stopAutoSpin } = useAppContext()
+  const { events, timelinePosition, activeFilters, selectedEventId, setSelectedEventId, arcs, stopAutoSpin, globeFocusTarget, setGlobeFocusTarget } = useAppContext()
   const { activeHighlights } = useAgentContext()
 
   // Monochrome globe material — medium dark grey base
@@ -40,19 +40,17 @@ export default function GlobeView() {
   // A rAF-throttled tick triggers re-renders so the pointRadius accessor picks up
   // the new altitude without rebuilding or rememoising the points array.
   const altRef = useRef(2.5)
-  const rafRef = useRef<number | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [, setAltitudeTick] = useState(0)
 
   const handleZoom = useCallback(({ altitude }: { altitude: number }) => {
-    // onZoom fires during rotation/inertia too — skip if altitude didn't actually change
     if (Math.abs(altitude - altRef.current) < 0.01) return
     altRef.current = altitude
-    if (rafRef.current === null) {
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = null
-        setAltitudeTick(t => t + 1)
-      })
-    }
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null
+      setAltitudeTick(t => t + 1)
+    }, 120)
   }, [])
 
   // Compute visible event IDs based on timeline + filters
@@ -169,10 +167,26 @@ export default function GlobeView() {
     }
   }, [setSelectedEventId, stopAutoSpin])
 
-  // Cancel any pending rAF on unmount
+  // Pan globe when a related event is clicked from the modal
+  useEffect(() => {
+    if (!globeFocusTarget) return
+    globeRef.current?.pointOfView({ lat: globeFocusTarget.lat - 3, lng: globeFocusTarget.lng, altitude: 0.3 }, 800)
+    setGlobeFocusTarget(null)
+  }, [globeFocusTarget, setGlobeFocusTarget])
+
+  // Reduce spin momentum — default dampingFactor is ~0.1 (floaty); 0.4 stops much sooner
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const controls = globeRef.current?.controls()
+      if (controls) controls.dampingFactor = 0.4
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [])
+
+  // Cancel any pending debounce on unmount
   useEffect(() => {
     return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+      if (debounceRef.current !== null) clearTimeout(debounceRef.current)
     }
   }, [])
 
@@ -234,7 +248,17 @@ export default function GlobeView() {
           if (arc.highlighted) return ['#ffffffaa', '#ffffff44']
           return [`${arc.color}55`, `${arc.color}22`]
         }}
-        arcAltitude={0.25}
+        arcAltitude={(d: object) => {
+          const arc = d as ArcData
+          const toRad = (deg: number) => deg * Math.PI / 180
+          const dLat = toRad(arc.endLat - arc.startLat)
+          const dLng = toRad(arc.endLng - arc.startLng)
+          const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(arc.startLat)) * Math.cos(toRad(arc.endLat)) * Math.sin(dLng / 2) ** 2
+          const distDeg = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * (180 / Math.PI)
+          // Scale: 0° → 0.05, 180° → 0.4
+          return 0.05 + (distDeg / 180) * 0.35
+        }}
         arcStroke={(d: object) => {
           const arc = d as ArcData & { highlighted?: boolean }
           return arc.highlighted ? 0.8 : 0.25

@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { getEventById } from '../../api/client'
-import type { EventDetail } from '../../types/events'
+import { getContentById } from '../../api/client'
+import type { ContentDetail } from '../../types/events'
 import { useAppContext, EVENT_TYPE_COLORS, EVENT_TYPE_LABELS } from '../../context/AppContext'
+import type { EventType } from '../../types/events'
 import { useAgentContext } from '../../context/AgentContext'
 import { getMediaUrls } from '../../utils/mediaConfig'
 import FinancialImpactSection from '../Agent/FinancialImpactSection'
@@ -11,6 +12,39 @@ function MissingData({ label }: { label: string }) {
     <p className="text-xs italic" style={{ color: '#8a4040' }}>
       {label} not available.
     </p>
+  )
+}
+
+function ExpandableText({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const LINE_LIMIT = 3
+  // ~80 chars per line * 3 lines
+  const CHAR_THRESHOLD = 240
+  const isLong = text.length > CHAR_THRESHOLD
+  return (
+    <div>
+      <p
+        className="text-xs leading-relaxed"
+        style={{
+          color: 'var(--text-secondary)',
+          display: '-webkit-box',
+          WebkitBoxOrient: 'vertical',
+          WebkitLineClamp: expanded ? 'unset' : LINE_LIMIT,
+          overflow: 'hidden',
+        } as React.CSSProperties}
+      >
+        {text}
+      </p>
+      {isLong && (
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="text-xs mt-1"
+          style={{ color: 'var(--text-muted)', textDecoration: 'underline', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -27,51 +61,25 @@ function ConfidenceBar({ score }: { score: number }) {
   )
 }
 
-function RelTypeChip({ type }: { type: string }) {
-  const colors: Record<string, string> = {
-    market_reaction: '#5a8a5a',
-    commodity_link: '#8a7a3a',
-    supply_chain_link: '#8a5a30',
-    regional_spillover: '#3a5a8a',
-    policy_impact: '#6a4a8a',
-    same_event_family: '#8a3a6a',
-  }
-  const c = colors[type] ?? '#666666'
-  return (
-    <span
-      className="text-xs px-2 py-0.5"
-      style={{ color: c, border: `1px solid ${c}66`, background: `${c}11` }}
-    >
-      {type.replace(/_/g, ' ')}
-    </span>
-  )
-}
 
 export default function EventModal() {
-  const { selectedEventId, setSelectedEventId, events } = useAppContext()
+  const { selectedEventId, setSelectedEventId, events, arcs, setGlobeFocusTarget, stopAutoSpin } = useAppContext()
   const { agentResponse, activeNavigationPlan } = useAgentContext()
-  const baseEvent = events.find(e => e.id === selectedEventId) ?? null
-  const [detail, setDetail] = useState<EventDetail | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [, setError] = useState<string | null>(null)
+  const ev = events.find(e => e.id === selectedEventId) ?? null
+  const [detail, setDetail] = useState<ContentDetail | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!selectedEventId) {
-      setDetail(null)
-      return
-    }
-    setLoading(true)
-    setError(null)
-    getEventById(selectedEventId)
+    if (!selectedEventId) { setDetail(null); return }
+    setDetail(null)
+    getContentById(selectedEventId)
       .then(d => {
         setDetail(d)
-        setLoading(false)
         if (activeNavigationPlan?.open_modal_event_id === selectedEventId) {
           setTimeout(() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' }), 50)
         }
       })
-      .catch(e => { setError(String(e)); setLoading(false) })
+      .catch(() => setDetail(null))
   }, [selectedEventId, activeNavigationPlan])
 
   const close = useCallback(() => setSelectedEventId(null), [setSelectedEventId])
@@ -83,8 +91,15 @@ export default function EventModal() {
   }, [close])
 
   const isOpen = !!selectedEventId
-  // Use full detail when available, fall back to the lightweight event from the list
-  const ev = detail ?? baseEvent
+
+  // Related events: derive from arc connections in globe state
+  const arcRelated = ev
+    ? arcs
+        .filter(a => a.eventAId === ev.id || a.eventBId === ev.id)
+        .map(a => events.find(e => e.id === (a.eventAId === ev.id ? a.eventBId : a.eventAId)))
+        .filter((e): e is typeof events[0] => e !== undefined)
+        //.slice(0, 5)
+    : []
 
   return (
     <div
@@ -117,13 +132,7 @@ export default function EventModal() {
           </svg>
         </button>
 
-        {loading && (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="w-6 h-6 border border-[#505050] border-t-transparent animate-spin" style={{ borderRadius: 0 }} />
-          </div>
-        )}
-
-        {!loading && ev && (
+        {ev && (
           <div className="flex flex-col">
             {/* Hero image */}
             <div className="relative h-44 flex-shrink-0 overflow-hidden" style={{ background: 'var(--bg-raised)' }}>
@@ -143,16 +152,16 @@ export default function EventModal() {
               <span
                 className="absolute bottom-3 left-4 text-xs font-bold px-2 py-0.5 tracking-wider"
                 style={{
-                  backgroundColor: `${EVENT_TYPE_COLORS[ev.event_type]}18`,
-                  color: EVENT_TYPE_COLORS[ev.event_type],
-                  border: `1px solid ${EVENT_TYPE_COLORS[ev.event_type]}66`,
+                  backgroundColor: `${EVENT_TYPE_COLORS[(ev.event_type as EventType)]}18`,
+                  color: EVENT_TYPE_COLORS[(ev.event_type as EventType)],
+                  border: `1px solid ${EVENT_TYPE_COLORS[(ev.event_type as EventType)]}66`,
                 }}
               >
                 <span
                   className="inline-block w-1.5 h-1.5 mr-1.5 align-middle"
-                  style={{ backgroundColor: EVENT_TYPE_COLORS[ev.event_type] }}
+                  style={{ backgroundColor: EVENT_TYPE_COLORS[(ev.event_type as EventType)] }}
                 />
-                {EVENT_TYPE_LABELS[ev.event_type]}
+                {EVENT_TYPE_LABELS[(ev.event_type as EventType)]}
               </span>
             </div>
 
@@ -195,8 +204,8 @@ export default function EventModal() {
               {/* Summary */}
               <div>
                 <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Summary</div>
-                {detail?.summary
-                  ? <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{detail.summary}</p>
+                {detail?.body
+                  ? <ExpandableText text={detail.body} />
                   : <MissingData label="Summary" />}
               </div>
 
@@ -221,73 +230,71 @@ export default function EventModal() {
                 <FinancialImpactSection impact={agentResponse.financial_impact} />
               )}
 
-              {/* Entities */}
-              <div>
-                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Key Entities</div>
-                {(detail?.entities ?? []).length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {detail!.entities.map(name => (
-                      <span
-                        key={name}
-                        className="text-xs px-2 py-0.5"
-                        style={{
-                          background: 'var(--bg-raised)',
-                          color: 'var(--text-secondary)',
-                          border: '1px solid var(--border)',
-                        }}
-                      >
-                        {name}
-                      </span>
-                    ))}
-                  </div>
-                ) : <MissingData label="Key entities" />}
-              </div>
-
               {/* Engagement snapshot */}
               <div>
                 <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Engagement</div>
                 {detail?.engagement ? (
-                  <div className="grid grid-cols-2 gap-1.5">
+                  <div className="flex flex-col gap-1.5">
                     {[
-                      { label: 'Reddit Upvotes', value: detail.engagement.reddit_upvotes, icon: '▲' },
-                      { label: 'Reddit Comments', value: detail.engagement.reddit_comments, icon: '▼' },
-                      { label: 'Poly Volume', value: detail.engagement.poly_volume, icon: '◆' },
-                      { label: 'Poly Comments', value: detail.engagement.poly_comments, icon: '◇' },
-                      { label: 'Twitter Likes', value: detail.engagement.twitter_likes, icon: '♥' },
-                      { label: 'Twitter Views', value: detail.engagement.twitter_views, icon: '◎' },
-                      { label: 'Twitter Comments', value: detail.engagement.twitter_comments, icon: '◉' },
-                      { label: 'Twitter Reposts', value: detail.engagement.twitter_reposts, icon: '⇄' },
-                    ].map(({ label, value, icon }) => (
-                      <div
-                        key={label}
-                        className="p-2"
-                        style={{
-                          background: 'var(--bg-raised)',
-                          border: '1px solid var(--border)',
-                        }}
-                      >
-                        <div className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>{icon} {label}</div>
-                        <div className="text-xs font-bold tabular-nums" style={{ color: 'var(--text-bright)' }}>
-                          {value.toLocaleString()}
-                        </div>
+                      { label: 'Twitter', likes: detail.engagement.twitter_likes, comments: detail.engagement.twitter_comments, views: detail.engagement.twitter_views },
+                      { label: 'Reddit', likes: detail.engagement.reddit_upvotes, comments: detail.engagement.reddit_comments, views: null },
+                    ].map(({ label, likes, comments, views }) => (
+                      <div key={label} className="flex items-center gap-3 px-2.5 py-2" style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)' }}>
+                        <span className="text-xs w-12 flex-shrink-0" style={{ color: 'var(--text-muted)' }}>{label}</span>
+                        <span className="text-xs tabular-nums" style={{ color: 'var(--text-secondary)' }}>♥ {likes.toLocaleString()} likes</span>
+                        <span className="text-xs tabular-nums" style={{ color: 'var(--text-secondary)' }}>· {comments.toLocaleString()} comments</span>
+                        {views !== null && <span className="text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>· {views.toLocaleString()} views</span>}
                       </div>
                     ))}
                   </div>
                 ) : <MissingData label="Engagement data" />}
               </div>
 
-              {/* Sources */}
+              {/* Source */}
               <div>
-                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Sources</div>
-                {(detail?.sources ?? []).length > 0 ? (
+                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Source</div>
+                {detail?.url ? (
+                  <a
+                    href={detail.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-start justify-between gap-2 p-2.5 transition-colors"
+                    style={{ background: 'var(--bg-raised)', border: '1px solid var(--border)' }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+                  >
+                    <div className="flex-1 min-w-0">
+                      {detail.source_name && (
+                        <div className="text-xs font-bold mb-0.5" style={{ color: 'var(--text-primary)' }}>{detail.source_name}</div>
+                      )}
+                      <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{detail.url}</div>
+                      {detail.published_at && (
+                        <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                          {new Date(detail.published_at).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}
+                        </div>
+                      )}
+                    </div>
+                    <svg className="w-3 h-3 flex-shrink-0 mt-0.5" style={{ color: 'var(--text-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                ) : <MissingData label="Source link" />}
+              </div>
+
+              {/* Related events — from arc connections */}
+              <div>
+                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Related Events</div>
+                {arcRelated.length > 0 ? (
                   <div className="flex flex-col gap-1.5">
-                    {detail!.sources.slice(0, 4).map((src, i) => (
-                      <a
-                        key={i}
-                        href={src.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-2.5 transition-colors group"
+                    {arcRelated.map(rel => (
+                      <button
+                        key={rel.id}
+                        onClick={() => {
+                          stopAutoSpin()
+                          setSelectedEventId(rel.id)
+                          setGlobeFocusTarget({ lat: rel.primary_latitude, lng: rel.primary_longitude })
+                        }}
+                        className="p-2.5 text-left w-full"
                         style={{
                           background: 'var(--bg-raised)',
                           border: '1px solid var(--border)',
@@ -295,51 +302,17 @@ export default function EventModal() {
                         onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
                         onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold mb-0.5" style={{ color: 'var(--text-primary)' }}>{src.source_name}</div>
-                            <div className="text-xs leading-snug line-clamp-2" style={{ color: 'var(--text-secondary)' }}>{src.headline}</div>
-                          </div>
-                          <svg className="w-3 h-3 flex-shrink-0 mt-0.5" style={{ color: 'var(--text-muted)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                          </svg>
-                        </div>
-                        <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                          {new Date(src.published_at).toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' })}
-                        </div>
-                      </a>
-                    ))}
-                  </div>
-                ) : <MissingData label="Source links" />}
-              </div>
-
-              {/* Related events */}
-              <div>
-                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Related Events</div>
-                {(detail?.related_events ?? []).length > 0 ? (
-                  <div className="flex flex-col gap-1.5">
-                    {detail!.related_events.slice(0, 5).map(rel => (
-                      <div
-                        key={rel.event_id}
-                        className="p-2.5"
-                        style={{
-                          background: 'var(--bg-raised)',
-                          border: '1px solid var(--border)',
-                        }}
-                      >
-                        <div className="flex items-start gap-2 mb-1.5">
+                        <div className="flex items-start gap-2">
                           <span
                             className="inline-block w-1.5 h-1.5 flex-shrink-0 mt-1"
                             style={{ backgroundColor: EVENT_TYPE_COLORS[rel.event_type] }}
                           />
                           <span className="text-xs font-bold leading-snug flex-1" style={{ color: 'var(--text-bright)' }}>{rel.title}</span>
-                          <span className="text-xs tabular-nums flex-shrink-0" style={{ color: 'var(--text-muted)' }}>{Math.round(rel.relationship_score * 100)}%</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <RelTypeChip type={rel.relationship_type} />
+                        <div className="text-xs mt-1 ml-3" style={{ color: 'var(--text-muted)' }}>
+                          {EVENT_TYPE_LABELS[rel.event_type]} · {new Date(rel.start_time).toLocaleDateString('en-CA', { year: 'numeric', month: 'short' })}
                         </div>
-                        <p className="text-xs mt-1.5 leading-snug line-clamp-2" style={{ color: 'var(--text-muted)' }}>{rel.reason}</p>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 ) : <MissingData label="Related events" />}
