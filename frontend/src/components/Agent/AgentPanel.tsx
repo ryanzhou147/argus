@@ -31,9 +31,9 @@ export default function AgentPanel() {
     }
   }, [isPanelOpen])
 
-  // Reset textarea height when input is cleared (after submit)
+  // Sync textarea height whenever inputValue changes (covers preset clicks + clear on submit)
   useEffect(() => {
-    if (!inputValue) autoResize()
+    autoResize()
   }, [inputValue, autoResize])
 
   const handleSubmit = useCallback(async () => {
@@ -216,7 +216,7 @@ export default function AgentPanel() {
       style={{ width: '420px', maxWidth: '100vw' }}
     >
       <div
-        className={`h-full w-full pointer-events-auto flex flex-col${isRecording ? ' listening-glow' : ''}`}
+        className={`h-full w-full pointer-events-auto flex flex-col${isRecording ? ' listening-glow' : isLoading ? ' generating-glow' : ''}`}
         style={{
           background: 'var(--bg-surface)',
           borderRight: '1px solid var(--border)',

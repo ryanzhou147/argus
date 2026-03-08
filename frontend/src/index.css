@@ -57,3 +57,12 @@ html, body, #root {
 .listening-glow {
   animation: listening-glow 1.4s ease-in-out infinite;
 }
+
+/* Generating glow — pulsing accent border on the agent panel while loading */
+@keyframes generating-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(144, 144, 144, 0.0), inset 0 0 0 1px rgba(144, 144, 144, 0.35); }
+  50%       { box-shadow: 0 0 32px 8px rgba(144, 144, 144, 0.3), inset 0 0 0 1px rgba(200, 200, 200, 0.9); }
+}
+.generating-glow {
+  animation: generating-glow 1.6s ease-in-out infinite;
+}
