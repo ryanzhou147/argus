@@ -4,7 +4,7 @@ import type { ContentDetail } from '../../types/events'
 import { useAppContext, EVENT_TYPE_COLORS, EVENT_TYPE_LABELS } from '../../context/AppContext'
 import type { EventType } from '../../types/events'
 import { useAgentContext } from '../../context/AgentContext'
-import { getMediaUrls } from '../../utils/mediaConfig'
+import { getMediaUrls, isVideoUrl } from '../../utils/mediaConfig'
 import FinancialImpactSection from '../Agent/FinancialImpactSection'
 
 function MissingData({ label }: { label: string }) {
@@ -67,6 +67,9 @@ export default function EventModal() {
   const { agentResponse, activeNavigationPlan } = useAgentContext()
   const ev = events.find(e => e.id === selectedEventId) ?? null
   const [detail, setDetail] = useState<ContentDetail | null>(null)
+  const [mediaExpanded, setMediaExpanded] = useState(false)
+  const heroRef = useRef<HTMLDivElement>(null)
+  const heroVideoRef = useRef<HTMLVideoElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -102,6 +105,7 @@ export default function EventModal() {
     : []
 
   return (
+    <>
     <div
       className="absolute top-0 right-0 h-full z-30 flex pointer-events-none"
       style={{ width: '420px', maxWidth: '100vw' }}
@@ -134,19 +138,58 @@ export default function EventModal() {
 
         {ev && (
           <div className="flex flex-col">
-            {/* Hero image */}
-            <div className="relative h-44 flex-shrink-0 overflow-hidden" style={{ background: 'var(--bg-raised)' }}>
-              <img
-                src={getMediaUrls(ev.image_url, ev.image_s3_url).primary}
-                alt={ev.title}
-                className="w-full h-full object-cover"
-                style={{ filter: 'saturate(0.7) brightness(0.75)' }}
-                onError={(e) => {
-                  const fallback = getMediaUrls(ev.image_url, ev.image_s3_url).fallback
-                  const img = e.target as HTMLImageElement
-                  img.src = fallback ?? '/placeholder-event.svg'
-                }}
-              />
+            {/* Hero media */}
+            <div
+              ref={heroRef}
+              className="relative h-44 flex-shrink-0 overflow-hidden cursor-pointer"
+              style={{ background: 'var(--bg-raised)' }}
+              onClick={() => {
+                setMediaExpanded(v => {
+                  const next = !v
+                  if (next) heroVideoRef.current?.pause()
+                  else heroVideoRef.current?.play()
+                  return next
+                })
+              }}
+            >
+              {isVideoUrl(ev.image_url) ? (
+                <video
+                  ref={heroVideoRef}
+                  src={getMediaUrls(ev.image_url, ev.image_s3_url).primary}
+                  className="w-full h-full object-cover"
+                  style={{ filter: 'saturate(0.7) brightness(0.75)' }}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  onError={(e) => {
+                    const fallback = getMediaUrls(ev.image_url, ev.image_s3_url).fallback
+                    if (fallback) (e.target as HTMLVideoElement).src = fallback
+                  }}
+                />
+              ) : (
+                <img
+                  src={getMediaUrls(ev.image_url, ev.image_s3_url).primary}
+                  alt={ev.title}
+                  className="w-full h-full object-cover"
+                  style={{ filter: 'saturate(0.7) brightness(0.75)' }}
+                  onError={(e) => {
+                    const fallback = getMediaUrls(ev.image_url, ev.image_s3_url).fallback
+                    const img = e.target as HTMLImageElement
+                    img.src = fallback ?? '/placeholder-event.svg'
+                  }}
+                />
+              )}
+
+              {/* Expand hint */}
+              {!mediaExpanded && (
+                <div className="absolute top-2 right-2 rounded-full p-1 pointer-events-none"
+                  style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                  </svg>
+                </div>
+              )}
               <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(8,8,8,0.95) 0%, transparent 55%)' }} />
               {/* Type badge */}
               <span
@@ -324,5 +367,62 @@ export default function EventModal() {
         )}
       </div>
     </div>
+
+    {/* Expanded media overlay */}
+    {mediaExpanded && ev && (
+      <>
+        {/* Backdrop */}
+        <div
+          className="fixed inset-0 z-[9998]"
+          style={{
+            background: 'rgba(0,0,0,0.75)',
+            backdropFilter: 'blur(6px)',
+            animation: 'fadeIn 0.3s ease forwards',
+          }}
+          onClick={() => { setMediaExpanded(false); heroVideoRef.current?.play() }}
+        />
+        {/* Expanded media */}
+        <div
+          className="fixed z-[9999] overflow-hidden shadow-2xl"
+          style={{
+            width: '56vw',
+            maxWidth: '900px',
+            aspectRatio: '16/9',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            animation: 'expandMedia 0.3s cubic-bezier(0.34,1.2,0.64,1) forwards',
+          }}
+          onClick={() => { setMediaExpanded(false); heroVideoRef.current?.play() }}
+        >
+          {isVideoUrl(ev.image_url) ? (
+            <video
+              src={getMediaUrls(ev.image_url, ev.image_s3_url).primary}
+              className="w-full h-full object-cover"
+              autoPlay
+              loop
+              playsInline
+              controls
+            />
+          ) : (
+            <img
+              src={getMediaUrls(ev.image_url, ev.image_s3_url).primary}
+              alt={ev.title}
+              className="w-full h-full object-cover"
+            />
+          )}
+        </div>
+        <style>{`
+          @keyframes fadeIn {
+            from { opacity: 0 } to { opacity: 1 }
+          }
+          @keyframes expandMedia {
+            from { opacity: 0; transform: translate(-50%, -50%) scale(0.7) }
+            to   { opacity: 1; transform: translate(-50%, -50%) scale(1) }
+          }
+        `}</style>
+      </>
+    )}
+    </>
   )
 }

@@ -59,7 +59,9 @@ def get_content_points():
                     latitude,
                     longitude,
                     event_type,
-                    published_at
+                    published_at,
+                    image_url,
+                    s3_url AS image_s3_url
                 FROM content_table
                 WHERE latitude IS NOT NULL
                   AND longitude IS NOT NULL
@@ -78,6 +80,8 @@ def get_content_points():
                     "longitude": r["longitude"],
                     "event_type": r["event_type"],
                     "published_at": r["published_at"].isoformat() if r["published_at"] else None,
+                    "image_url": r["image_url"],
+                    "image_s3_url": r["image_s3_url"],
                 }
             )
         return {"points": points}
@@ -176,9 +180,15 @@ def get_content_detail(content_id: str):
                 """
                 SELECT
                     c.id::text,
+                    c.title,
                     c.body,
                     c.url,
                     c.published_at,
+                    c.image_url,
+                    c.s3_url AS image_s3_url,
+                    c.latitude,
+                    c.longitude,
+                    c.event_type,
                     s.name AS source_name,
                     e.twitter_likes,
                     e.twitter_comments,
@@ -212,8 +222,14 @@ def get_content_detail(content_id: str):
 
         return {
             "id": row["id"],
+            "title": row["title"],
             "body": row["body"],
             "url": row["url"],
+            "image_url": row["image_url"],
+            "image_s3_url": row["image_s3_url"],
+            "latitude": row["latitude"],
+            "longitude": row["longitude"],
+            "event_type": row["event_type"],
             "source_name": row["source_name"],
             "published_at": row["published_at"].isoformat() if row["published_at"] else None,
             "engagement": engagement,
