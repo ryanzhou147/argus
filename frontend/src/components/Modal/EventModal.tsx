@@ -63,7 +63,7 @@ function ConfidenceBar({ score }: { score: number }) {
 
 
 export default function EventModal() {
-  const { selectedEventId, setSelectedEventId, events, arcs } = useAppContext()
+  const { selectedEventId, setSelectedEventId, events, arcs, setGlobeFocusTarget, stopAutoSpin } = useAppContext()
   const { agentResponse, activeNavigationPlan } = useAgentContext()
   const ev = events.find(e => e.id === selectedEventId) ?? null
   const [detail, setDetail] = useState<ContentDetail | null>(null)
@@ -98,7 +98,7 @@ export default function EventModal() {
         .filter(a => a.eventAId === ev.id || a.eventBId === ev.id)
         .map(a => events.find(e => e.id === (a.eventAId === ev.id ? a.eventBId : a.eventAId)))
         .filter((e): e is typeof events[0] => e !== undefined)
-        .slice(0, 5)
+        //.slice(0, 5)
     : []
 
   return (
@@ -289,7 +289,11 @@ export default function EventModal() {
                     {arcRelated.map(rel => (
                       <button
                         key={rel.id}
-                        onClick={() => setSelectedEventId(rel.id)}
+                        onClick={() => {
+                          stopAutoSpin()
+                          setSelectedEventId(rel.id)
+                          setGlobeFocusTarget({ lat: rel.primary_latitude, lng: rel.primary_longitude })
+                        }}
                         className="p-2.5 text-left w-full"
                         style={{
                           background: 'var(--bg-raised)',
