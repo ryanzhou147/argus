@@ -59,6 +59,98 @@ function HeroVideo({ src, fallbackSrc }: { src: string; fallbackSrc?: string | n
   )
 }
 
+function MediaLightbox({
+  src,
+  isVideo,
+  fallbackSrc,
+  onClose,
+}: {
+  src: string
+  isVideo: boolean
+  fallbackSrc?: string | null
+  onClose: () => void
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v) return
+    v.muted = false
+    v.currentTime = 0
+    v.play().catch(() => {})
+  }, [src])
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center pointer-events-auto"
+      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}
+      onClick={onClose}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center transition-colors"
+        style={{
+          background: 'rgba(255,255,255,0.08)',
+          border: '1px solid rgba(255,255,255,0.15)',
+          color: 'rgba(255,255,255,0.7)',
+        }}
+        aria-label="Close fullscreen"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="square" strokeLinejoin="miter" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+
+      <div
+        className="relative"
+        style={{ maxWidth: '90vw', maxHeight: '85vh' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {isVideo ? (
+          <video
+            ref={videoRef}
+            src={src}
+            className="block"
+            style={{ maxWidth: '90vw', maxHeight: '85vh', objectFit: 'contain' }}
+            controls
+            autoPlay
+            loop
+            playsInline
+            preload="auto"
+            onError={(e) => {
+              const v = e.target as HTMLVideoElement
+              if (fallbackSrc && !v.dataset.errored) {
+                v.dataset.errored = '1'
+                v.poster = fallbackSrc
+              }
+            }}
+          />
+        ) : (
+          <img
+            src={src}
+            alt=""
+            className="block"
+            style={{ maxWidth: '90vw', maxHeight: '85vh', objectFit: 'contain' }}
+            onError={(e) => {
+              const img = e.target as HTMLImageElement
+              if (fallbackSrc && !img.dataset.errored) {
+                img.dataset.errored = '1'
+                img.src = fallbackSrc
+              }
+            }}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
 function MissingData({ label }: { label: string }) {
   return (
     <p className="text-xs italic" style={{ color: '#8a4040' }}>
@@ -119,6 +211,7 @@ export default function EventModal() {
   const { agentResponse, activeNavigationPlan } = useAgentContext()
   const ev = events.find(e => e.id === selectedEventId) ?? null
   const [detail, setDetail] = useState<ContentDetail | null>(null)
+  const [lightbox, setLightbox] = useState<{ src: string; isVideo: boolean; fallback: string | null } | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -187,50 +280,69 @@ export default function EventModal() {
         {ev && (
           <div className="flex flex-col">
             {/* Hero media */}
-            <div className="relative h-44 flex-shrink-0 overflow-hidden" style={{ background: 'var(--bg-raised)' }}>
-              {(() => {
-                const media = getMediaUrls(ev.image_url, ev.image_s3_url)
-                if (media.isVideo) {
-                  return <HeroVideo key={ev.id} src={media.primary} fallbackSrc={media.fallback} />
-                }
-                return (
-                  <img
-                    key={ev.id}
-                    src={media.primary}
-                    alt={ev.title}
-                    className="w-full h-full object-cover"
-                    style={{ filter: 'saturate(0.7) brightness(0.75)' }}
-                    onError={(e) => {
-                      const img = e.target as HTMLImageElement
-                      const step = parseInt(img.dataset.errorStep || '0', 10)
-                      if (step === 0 && media.fallback) {
-                        img.dataset.errorStep = '1'
-                        img.src = media.fallback
-                      } else if (step <= 1) {
-                        img.dataset.errorStep = '2'
-                        img.src = '/placeholder-event.svg'
-                      }
+            {(() => {
+              const media = getMediaUrls(ev.image_url, ev.image_s3_url)
+              const isPlaceholder = media.primary === '/placeholder-event.svg'
+              return (
+                <div className="relative h-44 flex-shrink-0 overflow-hidden" style={{ background: 'var(--bg-raised)' }}>
+                  {media.isVideo ? (
+                    <HeroVideo key={ev.id} src={media.primary} fallbackSrc={media.fallback} />
+                  ) : (
+                    <img
+                      key={ev.id}
+                      src={media.primary}
+                      alt={ev.title}
+                      className="w-full h-full object-cover"
+                      style={{ filter: 'saturate(0.7) brightness(0.75)' }}
+                      onError={(e) => {
+                        const img = e.target as HTMLImageElement
+                        const step = parseInt(img.dataset.errorStep || '0', 10)
+                        if (step === 0 && media.fallback) {
+                          img.dataset.errorStep = '1'
+                          img.src = media.fallback
+                        } else if (step <= 1) {
+                          img.dataset.errorStep = '2'
+                          img.src = '/placeholder-event.svg'
+                        }
+                      }}
+                    />
+                  )}
+                  <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(8,8,8,0.95) 0%, transparent 55%)' }} />
+
+                  {!isPlaceholder && (
+                    <button
+                      onClick={() => setLightbox({ src: media.primary, isVideo: media.isVideo, fallback: media.fallback })}
+                      className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center transition-opacity opacity-60 hover:opacity-100"
+                      style={{
+                        background: 'rgba(0,0,0,0.5)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        color: 'rgba(255,255,255,0.8)',
+                      }}
+                      aria-label="View fullscreen"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="square" strokeWidth={2} d="M15 3h6m0 0v6m0-6L14 10M9 21H3m0 0v-6m0 6l7-7" />
+                      </svg>
+                    </button>
+                  )}
+
+                  <span
+                    className="absolute bottom-3 left-4 text-xs font-bold px-2 py-0.5 tracking-wider"
+                    style={{
+                      backgroundColor: `${EVENT_TYPE_COLORS[(ev.event_type as EventType)]}18`,
+                      color: EVENT_TYPE_COLORS[(ev.event_type as EventType)],
+                      border: `1px solid ${EVENT_TYPE_COLORS[(ev.event_type as EventType)]}66`,
                     }}
-                  />
-                )
-              })()}
-              <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(8,8,8,0.95) 0%, transparent 55%)' }} />
-              {/* Type badge */}
-              <span
-                className="absolute bottom-3 left-4 text-xs font-bold px-2 py-0.5 tracking-wider"
-                style={{
-                  backgroundColor: `${EVENT_TYPE_COLORS[(ev.event_type as EventType)]}18`,
-                  color: EVENT_TYPE_COLORS[(ev.event_type as EventType)],
-                  border: `1px solid ${EVENT_TYPE_COLORS[(ev.event_type as EventType)]}66`,
-                }}
-              >
-                <span
-                  className="inline-block w-1.5 h-1.5 mr-1.5 align-middle"
-                  style={{ backgroundColor: EVENT_TYPE_COLORS[(ev.event_type as EventType)] }}
-                />
-                {EVENT_TYPE_LABELS[(ev.event_type as EventType)]}
-              </span>
-            </div>
+                  >
+                    <span
+                      className="inline-block w-1.5 h-1.5 mr-1.5 align-middle"
+                      style={{ backgroundColor: EVENT_TYPE_COLORS[(ev.event_type as EventType)] }}
+                    />
+                    {EVENT_TYPE_LABELS[(ev.event_type as EventType)]}
+                  </span>
+                </div>
+              )
+            })()}
 
             {/* Content */}
             <div className="px-5 py-4 flex flex-col gap-4">
@@ -390,6 +502,15 @@ export default function EventModal() {
           </div>
         )}
       </div>
+
+      {lightbox && (
+        <MediaLightbox
+          src={lightbox.src}
+          isVideo={lightbox.isVideo}
+          fallbackSrc={lightbox.fallback}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   )
 }
