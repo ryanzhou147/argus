@@ -88,7 +88,7 @@ export default function AgentPanel() {
       audioContext.createMediaStreamSource(stream).connect(analyser)
       const dataArray = new Uint8Array(analyser.fftSize)
       const SILENCE_THRESHOLD = 8   // RMS below this = silence
-      const SILENCE_DURATION_MS = 1500
+      const SILENCE_DURATION_MS = 3000
 
       const checkSilence = () => {
         if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') return
@@ -203,7 +203,7 @@ export default function AgentPanel() {
       style={{ width: '420px', maxWidth: '100vw' }}
     >
       <div
-        className="h-full w-full pointer-events-auto flex flex-col"
+        className={`h-full w-full pointer-events-auto flex flex-col${isRecording ? ' listening-glow' : ''}`}
         style={{
           background: 'var(--bg-surface)',
           borderRight: '1px solid var(--border)',
@@ -293,29 +293,36 @@ export default function AgentPanel() {
               onFocus={e => (e.currentTarget.style.borderColor = 'var(--accent)')}
               onBlur={e => (e.currentTarget.style.borderColor = 'var(--border-strong)')}
             />
-            <button
-              onClick={toggleRecording}
-              disabled={isLoading || isTranscribing}
-              className={`w-9 h-9 flex items-center justify-center transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed ${isRecording ? 'animate-pulse' : ''}`}
-              style={{
-                 background: isRecording ? '#dc2626' : 'var(--bg-raised)',
-                 border: '1px solid var(--border-strong)',
-                 color: isRecording ? '#fff' : 'var(--text-primary)'
-              }}
-              aria-label={isRecording ? "Stop recording" : "Start voice recording"}
-            >
-              {isTranscribing ? (
-                <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent animate-spin rounded-full" />
-              ) : isRecording ? (
-                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M6 18h12V6H6v12z" />
-                </svg>
-              ) : (
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                </svg>
-              )}
-            </button>
+            <div className="relative flex-shrink-0 w-9 h-9">
+              {/* Ping rings visible while recording */}
+              {isRecording && <>
+                <span className="absolute inset-0 rounded-none animate-ping" style={{ background: 'rgba(220,38,38,0.3)', animationDuration: '1s' }} />
+                <span className="absolute -inset-1.5 rounded-none animate-ping" style={{ background: 'rgba(220,38,38,0.15)', animationDuration: '1s', animationDelay: '0.2s' }} />
+              </>}
+              <button
+                onClick={toggleRecording}
+                disabled={isLoading || isTranscribing}
+                className="relative w-9 h-9 flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: isRecording ? '#dc2626' : 'var(--bg-raised)',
+                  border: '1px solid var(--border-strong)',
+                  color: isRecording ? '#fff' : 'var(--text-primary)',
+                }}
+                aria-label={isRecording ? "Stop recording" : "Start voice recording"}
+              >
+                {isTranscribing ? (
+                  <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent animate-spin rounded-full" />
+                ) : isRecording ? (
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M6 18h12V6H6v12z" />
+                  </svg>
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                )}
+              </button>
+            </div>
             <button
               onClick={handleSubmit}
               disabled={!inputValue.trim() || isLoading}
