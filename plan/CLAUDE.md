@@ -2,6 +2,8 @@
 
 Read this file before working on any ticket. It contains the full architectural context, conventions, and key file locations for the Argus project.
 
+> **Note:** This document reflects the team's best understanding at time of writing. If the user gives instructions that conflict with what's written here, **follow the user's instructions** — they take priority. If parts of this context have become outdated or irrelevant due to changes in the codebase, use your judgement and note the discrepancy rather than blindly following stale guidance.
+
 ## What Is Argus
 
 A 3D global event intelligence platform. World events are scraped daily from multiple sources, stored in PostgreSQL with vector embeddings, and visualized on an interactive globe. An AI agent (Graph-RAG pipeline) lets users query events with persona-aware analysis.
@@ -18,7 +20,7 @@ A 3D global event intelligence platform. World events are scraped daily from mul
 | AI Model | Google Gemini 2.5-flash | Structured JSON output |
 | Embeddings | OpenAI text-embedding-3-small (1536 dims) | Migration target: local sentence-transformers |
 | Voice | ElevenLabs Scribe v1 | Optional, speech-to-text |
-| Media | Cloudinary (primary), S3 fallback, placeholder SVGs | |
+| Media | Placeholder SVGs only | Cloudinary and S3 removed — no longer needed |
 
 ## Project Structure
 
@@ -50,13 +52,13 @@ hackcanada/
 │   │   ├── types/
 │   │   │   ├── events.ts             # Event, ContentPoint, ContentArc, EventDetail
 │   │   │   └── agent.ts              # AgentResponse, NavigationPlan, FinancialImpact
-│   │   └── utils/mediaConfig.ts      # Cloudinary/S3/placeholder URL resolver
+│   │   └── utils/mediaConfig.ts      # DEPRECATED — Cloudinary/S3 removed, delete this file (ticket #10)
 │   └── package.json
 │
 └── backend/
     ├── requirements.txt
-    ├── run_scrape.py                  # CLI: Polymarket + Kalshi scrape
-    ├── run_gdelt_scrape.py            # CLI: GDELT scrape (--days, --limit flags)
+    ├── run_scrape.py                  # LEGACY CLI — will be replaced by run_daily_pipeline.py
+    ├── run_gdelt_scrape.py            # LEGACY CLI — will be replaced by run_daily_pipeline.py
     ├── migrations/
     │   └── 001_init_schema.sql        # Full PostgreSQL schema
     └── app/
@@ -94,16 +96,19 @@ hackcanada/
         │       ├── acled_client.py    # ACLED API client
         │       └── acled_normalizer.py
         └── scrapers/
-            ├── gdelt.py               # GDELT (BigQuery primary, DOC API fallback)
-            ├── polymarket.py          # Polymarket API
-            ├── kalshi.py              # Kalshi API (async, rate-limited)
-            ├── row_format.py          # Shared row normalization -> content_table shape
+            ├── row_format.py          # Shared row normalization -> content_table shape (KEEP — used by new scrapers)
+            ├── _reference/            # Hackathon scrapers kept as design inspiration only (NOT used in production)
+            │   ├── gdelt.py           # Reference: dual-path fetch, CAMEO mapping, Goldstein normalization
+            │   ├── kalshi.py          # Reference: async rate limiter, cursor pagination, asyncio.gather
+            │   ├── polymarket.py      # Reference: simple REST API pattern, tag filtering
+            │   └── acled/             # Reference: client/normalizer separation, NormalizedRecord model
             ├── eonet.py               # UNUSED — delete
             ├── eonet_db.py            # UNUSED — delete
             ├── social_scraper.py      # UNUSED — delete
             ├── reddit.py              # UNUSED — delete
             ├── reddit_classifier.py   # UNUSED — delete
             ├── reddit_db.py           # UNUSED — delete
+            ├── reddit_schema.sql      # UNUSED — delete
             ├── Reddit Scraper/        # UNUSED — delete
             ├── natural-disasters/     # UNUSED — delete
             └── ryan_scrapers/         # UNUSED — delete
@@ -119,7 +124,7 @@ PostgreSQL with pgvector and pgcrypto extensions.
 - `id` UUID PK (gen_random_uuid)
 - `title`, `body`, `url` (UNIQUE)
 - `latitude`, `longitude` (nullable floats)
-- `image_url` (Cloudinary public_id), `s3_url`
+- `image_url`, `s3_url` — DEPRECATED, to be dropped (Cloudinary/S3 no longer used)
 - `embedding` vector(1536) — OpenAI text-embedding-3-small
 - `sentiment_score` float, `market_signal` text
 - `published_at` timestamptz, `event_type` text, `raw_metadata_json` JSONB
@@ -181,18 +186,22 @@ Each maps to a color in the frontend `EVENT_TYPE_COLORS` constant.
 
 ## Data Sources
 
-| Source | What It Provides | Scraper File |
-|--------|-----------------|--------------|
-| GDELT | Global events from news (BigQuery or DOC API) | `scrapers/gdelt.py` |
-| ACLED | Armed conflict events | `ingestion/acled/acled_client.py` |
-| Polymarket | Prediction market events + probabilities | `scrapers/polymarket.py` |
-| Kalshi | Prediction market events + volumes | `scrapers/kalshi.py` |
+The hackathon prototype used the sources below. **None of the existing scraper implementations will be used directly** — new production scrapers will be written implementing a `BaseScraper` ABC. The old code is kept in `scrapers/_reference/` for design inspiration.
+
+| Source | What It Provides | Reference File | Quality |
+|--------|-----------------|----------------|---------|
+| GDELT | Global events from news (BigQuery or DOC API) | `scrapers/_reference/gdelt.py` | Excellent — study for complex normalization |
+| ACLED | Armed conflict events | `scrapers/_reference/acled/` | Good — study for client/normalizer separation |
+| Polymarket | Prediction market events + probabilities | `scrapers/_reference/polymarket.py` | Decent — study for simple REST pattern |
+| Kalshi | Prediction market events + volumes | `scrapers/_reference/kalshi.py` | Excellent — study for async rate limiting |
+
+Which data sources to keep, replace, or add is a product decision for Phase 2. The scraper architecture (BaseScraper ABC, row_format contract, dedup-before-embed) is what matters.
 
 ## Known Issues & Tech Debt
 
 1. **Duplicate `content_repository.py`** — exists in both `repositories/` and `ingestion/`. Must consolidate.
 2. **No shared DB pool** — `ingestion/db.py` has its own pool; other services use inline `asyncpg.connect()`. Need a single shared pool.
-3. **Dead scraper code** — `eonet.py`, `reddit*.py`, `social_scraper.py`, `Reddit Scraper/`, `natural-disasters/`, `ryan_scrapers/` are all unused.
+3. **Dead scraper code** — `eonet.py`, `reddit*.py`, `social_scraper.py`, `Reddit Scraper/`, `natural-disasters/`, `ryan_scrapers/` are all unused junk. The "real" scrapers (`gdelt.py`, `kalshi.py`, `polymarket.py`, `acled/`) are hackathon-quality reference code only — new production scrapers need to be written.
 4. **No scheduled scraping** — all ingestion is manual CLI or API trigger.
 5. **Expensive embeddings** — OpenAI API called per-row. Should switch to local model.
 6. **No caching** — every confidence score and realtime analysis call hits Gemini. Need Redis.
@@ -200,6 +209,7 @@ Each maps to a color in the frontend `EVENT_TYPE_COLORS` constant.
 8. **No tests** — zero test files in the repo.
 9. **Print debugging** — `print()` used instead of structured logging.
 10. **No migration tool** — raw SQL files, no Alembic.
+11. **Dead Cloudinary/S3 code** — Cloudinary and S3 are no longer used. `utils/mediaConfig.ts`, `@cloudinary/react`, `@cloudinary/url-gen`, `cloudinary`, `boto3` deps, `image_url`/`s3_url` DB columns, and all related env vars should be removed (ticket #10).
 
 ## Conventions
 
@@ -210,6 +220,7 @@ Each maps to a color in the frontend `EVENT_TYPE_COLORS` constant.
 - **Raw SQL** for queries (no ORM) — parameterize all user inputs with `$1, $2` syntax
 - **Environment variables** via `python-dotenv` and `os.getenv()`
 - **Scraper output** normalized via `row_format.make_content_row()` before DB insert
+- **New scrapers** must implement `BaseScraper` ABC — see `scrapers/_reference/` for patterns, especially `kalshi.py` (rate limiting) and `gdelt.py` (normalization)
 
 ### Frontend
 - **React 19** with function components and hooks only
@@ -231,21 +242,15 @@ GEMINI_API_KEY=...          # Required for agent
 GEMINI_MODEL=gemini-2.5-flash  # Optional, default shown
 OPENAI_API_KEY=...          # Required for embeddings (until local model migration)
 ACLED_API_KEY=...           # Required for ACLED ingestion
-CLOUDINARY_CLOUD_NAME=...  # Optional
-CLOUDINARY_API_KEY=...     # Optional
-CLOUDINARY_API_SECRET=...  # Optional
-AWS_ACCESS_KEY_ID=...      # Optional (S3 fallback)
-AWS_SECRET_ACCESS_KEY=...  # Optional
-S3_BUCKET=...              # Optional
-AWS_REGION=...             # Optional
 ELEVENLABS_API_KEY=...     # Optional
+# NOTE: CLOUDINARY_* and AWS_*/S3_* vars are no longer needed — remove if present
 ```
 
 ### Frontend (.env)
 ```
 VITE_API_URL=/api                    # or http://127.0.0.1:8000
-VITE_CLOUDINARY_CLOUD_NAME=...      # Optional
 VITE_ELEVENLABS_API_KEY=...         # Optional
+# NOTE: VITE_CLOUDINARY_CLOUD_NAME is no longer needed — remove if present
 ```
 
 ## Running Locally
@@ -259,7 +264,7 @@ uvicorn app.main:app --reload --port 8000
 # Frontend
 cd frontend && npm install && npm run dev
 
-# Manual scraping
+# Manual scraping (LEGACY — will be replaced by run_daily_pipeline.py)
 python run_scrape.py              # Polymarket + Kalshi
 python run_gdelt_scrape.py        # GDELT (--days 14 --limit 500)
 curl -X POST localhost:8000/ingestion/acled
