@@ -87,7 +87,7 @@ Key gaps: no deployment config, no scheduled scraping, no caching, no tests, hig
 
 | # | Ticket | Priority |
 |---|--------|----------|
-| 24 | **Switch embeddings to local model** — replace OpenAI `text-embedding-3-small` with `sentence-transformers` (e.g. `all-MiniLM-L6-v2`, 384 dims). Run locally in backend container. Update vector column dimension. | P0 |
+| 24 | **Switch embeddings to local model** — replace OpenAI `text-embedding-3-small` with `sentence-transformers` (e.g. `all-MiniLM-L6-v2`, 384 dims). Run locally in backend container. Update vector column dimension and include a one-time re-embedding migration/rollout plan (1536 -> 384) to avoid query downtime. | P0 |
 | 25 | Batch embedding generation — process 100+ items per batch instead of one-at-a-time | P0 |
 | 26 | Deduplicate content before generating embeddings (currently embeddings are generated before dedup) | P1 |
 

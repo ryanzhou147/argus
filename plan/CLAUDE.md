@@ -10,6 +10,8 @@ A 3D global event intelligence platform. World events are scraped daily from mul
 
 ## Tech Stack
 
+This table reflects the current codebase state at the time of writing; planned migrations are called out in the notes column.
+
 | Component | Technology | Notes |
 |-----------|-----------|-------|
 | Frontend | React 19 + TypeScript 5 + Vite 6 | SPA, no SSR |
@@ -18,7 +20,7 @@ A 3D global event intelligence platform. World events are scraped daily from mul
 | Backend | FastAPI + Uvicorn (Python 3.11+) | Async throughout |
 | Database | PostgreSQL 15+ with pgvector + pgcrypto | Extensions required |
 | AI Model | Google Gemini 2.5-flash | Structured JSON output |
-| Embeddings | OpenAI text-embedding-3-small (1536 dims) | Migration target: local sentence-transformers |
+| Embeddings | OpenAI text-embedding-3-small (1536 dims) | Current state; migration target: local sentence-transformers (see PRD ticket #24) |
 | Voice | ElevenLabs Scribe v1 | Optional, speech-to-text |
 | Media | Placeholder SVGs only | Cloudinary and S3 removed — no longer needed |
 
@@ -125,7 +127,7 @@ PostgreSQL with pgvector and pgcrypto extensions.
 - `title`, `body`, `url` (UNIQUE)
 - `latitude`, `longitude` (nullable floats)
 - `image_url`, `s3_url` — DEPRECATED, to be dropped (Cloudinary/S3 no longer used)
-- `embedding` vector(1536) — OpenAI text-embedding-3-small
+- `embedding` vector(1536) — OpenAI text-embedding-3-small (current; planned migration to 384 dims in PRD ticket #24)
 - `sentiment_score` float, `market_signal` text
 - `published_at` timestamptz, `event_type` text, `raw_metadata_json` JSONB
 - `source_id` FK -> sources, `engagement_id` FK -> engagement

@@ -8,6 +8,8 @@ This board is derived from the deployment planning work merged from PR #29 (`pla
 - Completed: **0**
 - Remaining: **66**
 
+> Progress counters are manual and should be updated when boxes are checked.
+
 ## Deployment Blockers (P0)
 
 > These are a prioritized subset of the full board and are duplicated below in the phase checklists.
