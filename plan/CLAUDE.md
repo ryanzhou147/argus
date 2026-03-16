@@ -211,7 +211,7 @@ Which data sources to keep, replace, or add is a product decision for Phase 2. T
 8. **No tests** — zero test files in the repo.
 9. **Print debugging** — `print()` used instead of structured logging.
 10. **No migration tool** — raw SQL files, no Alembic.
-11. **Dead Cloudinary/S3 code** — Cloudinary and S3 are no longer used. `utils/mediaConfig.ts`, `@cloudinary/react`, `@cloudinary/url-gen`, `cloudinary`, `boto3` deps, `image_url`/`s3_url` DB columns, and all related env vars should be removed (ticket #10).
+11. **Dead Cloudinary/S3 code** — Cloudinary and S3 are no longer used. `utils/mediaConfig.ts`, `@cloudinary/react`, `@cloudinary/url-gen`, `cloudinary`, `boto3` deps, `image_url`/`s3_url` DB columns, and all related env vars should be removed (ticket #11).
 
 ## Conventions
 
