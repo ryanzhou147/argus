@@ -4,11 +4,13 @@ This board is derived from the deployment planning work merged from PR #29 (`pla
 
 ## Current Status
 
-- Total deployment-plan tasks tracked: **66**
+- Total unique deployment-plan tasks tracked: **66**
 - Completed: **0**
 - Remaining: **66**
 
 ## Deployment Blockers (P0)
+
+> These are a prioritized subset of the full board and are duplicated below in the phase checklists.
 
 - [ ] #1 Create backend Dockerfile (FastAPI + uvicorn, multi-stage build)
 - [ ] #2 Create frontend Dockerfile (Vite build -> nginx static serve)
