@@ -54,7 +54,7 @@ hackcanada/
 │   │   ├── types/
 │   │   │   ├── events.ts             # Event, ContentPoint, ContentArc, EventDetail
 │   │   │   └── agent.ts              # AgentResponse, NavigationPlan, FinancialImpact
-│   │   └── utils/mediaConfig.ts      # DEPRECATED — Cloudinary/S3 removed, delete this file (ticket #10)
+│   │   └── utils/mediaConfig.ts      # DEPRECATED — Cloudinary/S3 removed, delete this file (ticket #11)
 │   └── package.json
 │
 └── backend/
