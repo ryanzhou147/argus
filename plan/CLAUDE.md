@@ -239,7 +239,7 @@ Which data sources to keep, replace, or add is a product decision for Phase 2. T
 
 ### Backend (.env)
 ```
-DATABASE_URL=postgresql+asyncpg://user:pass@host:5432/dbname    # Required
+DATABASE_URL=postgresql://user:pass@host:5432/dbname    # Required
 GEMINI_API_KEY=...          # Required for agent
 GEMINI_MODEL=gemini-2.5-flash  # Optional, default shown
 OPENAI_API_KEY=...          # Required for embeddings (until local model migration)
