@@ -91,6 +91,12 @@ Key gaps: no deployment config, no scheduled scraping, no caching, no tests, hig
 | 25 | Batch embedding generation — process 100+ items per batch instead of one-at-a-time | P0 |
 | 26 | Deduplicate content before generating embeddings (currently embeddings are generated before dedup) | P1 |
 
+**Embedding migration rollout notes (for ticket #24):**
+1. Add a new local-embedding column/index while keeping the current 1536-dim column online.
+2. Backfill local embeddings in batches with progress logging and retry support.
+3. Cut over read paths to the new column only after validation checks pass.
+4. Keep a rollback window where reads can switch back to the old column if quality/performance regress.
+
 ### 2.3 AI Response Caching (Redis)
 
 | # | Ticket | Priority |

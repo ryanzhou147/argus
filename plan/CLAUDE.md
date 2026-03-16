@@ -20,7 +20,7 @@ This table reflects the current codebase state at the time of writing; planned m
 | Backend | FastAPI + Uvicorn (Python 3.11+) | Async throughout |
 | Database | PostgreSQL 15+ with pgvector + pgcrypto | Extensions required |
 | AI Model | Google Gemini 2.5-flash | Structured JSON output |
-| Embeddings | OpenAI text-embedding-3-small (1536 dims) | Current state; migration target: local sentence-transformers (see PRD ticket #24 for dual-column/backfill/cutover migration) |
+| Embeddings | OpenAI text-embedding-3-small (1536 dims) | Current state; migration target: local sentence-transformers (see PRD embedding migration rollout notes) |
 | Voice | ElevenLabs Scribe v1 | Optional, speech-to-text |
 | Media | Placeholder SVGs only | Cloudinary and S3 removed — no longer needed |
 
@@ -127,7 +127,7 @@ PostgreSQL with pgvector and pgcrypto extensions.
 - `title`, `body`, `url` (UNIQUE)
 - `latitude`, `longitude` (nullable floats)
 - `image_url`, `s3_url` — DEPRECATED, to be dropped (Cloudinary/S3 no longer used)
-- `embedding` vector(1536) — OpenAI text-embedding-3-small (current; planned migration to 384 dims in PRD ticket #24)
+- `embedding` vector(1536) — OpenAI text-embedding-3-small (current; planned migration to 384 dims in PRD embedding migration rollout notes)
 - `sentiment_score` float, `market_signal` text
 - `published_at` timestamptz, `event_type` text, `raw_metadata_json` JSONB
 - `source_id` FK -> sources, `engagement_id` FK -> engagement
